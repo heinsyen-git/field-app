@@ -1,0 +1,1271 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kunjungan Lapangan</title>
+<meta name="theme-color" content="#1D3F8F">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+
+:root{
+  --bg:#EAEEF5; --surface:#FFFFFF; --surface-2:#F3F5FA; --ink:#14232D; --ink-2:#4B5C66; --line:#CDD5E3;
+  --brand:#1D3F8F; --brand-2:#142E6B; --on-brand:#FFFFFF; --mop:#F59E0B; --on-mop:#2A1700;
+  --ok:#22704A; --ok-bg:#D9EFE1; --wait:#7E5B00; --wait-bg:#FAEDBF; --bad:#A93623; --bad-bg:#F7DCD5; --idle:#56656E; --idle-bg:#E1E8E7;
+  --shadow:0 1px 0 rgba(20,35,45,.06), 0 8px 24px -14px rgba(20,35,45,.35);
+  --paper:#FFFFFF; --paper-ink:#1A1A1A;
+  color-scheme:light;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1420; --surface:#161F2E; --surface-2:#1C2738; --ink:#E6EEEE; --ink-2:#9DB0B4; --line:#2B3850;
+    --brand:#4A6FD1; --brand-2:#3557B5; --on-brand:#FFFFFF; --mop:#F59E0B; --on-mop:#2A1700;
+    --ok:#7FD3A2; --ok-bg:#173A29; --wait:#F2D06B; --wait-bg:#3A3014; --bad:#F29A86; --bad-bg:#43211A; --idle:#A9B7BC; --idle-bg:#22343A;
+    --shadow:0 1px 0 rgba(0,0,0,.3), 0 10px 26px -14px rgba(0,0,0,.7);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1420; --surface:#161F2E; --surface-2:#1C2738; --ink:#E6EEEE; --ink-2:#9DB0B4; --line:#2B3850;
+  --brand:#4A6FD1; --brand-2:#3557B5; --on-brand:#FFFFFF; --mop:#F59E0B; --on-mop:#2A1700;
+  --ok:#7FD3A2; --ok-bg:#173A29; --wait:#F2D06B; --wait-bg:#3A3014; --bad:#F29A86; --bad-bg:#43211A; --idle:#A9B7BC; --idle-bg:#22343A;
+  --shadow:0 1px 0 rgba(0,0,0,.3), 0 10px 26px -14px rgba(0,0,0,.7);
+  color-scheme:dark;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 Manrope,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:"Bricolage Grotesque",Manrope,system-ui,sans-serif;line-height:1.15;margin:0}
+img{max-width:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--mop);outline-offset:2px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 18px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 14px;border-radius:10px;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.btn.primary:hover{background:var(--brand-2)}
+.btn.mop{background:var(--mop);border-color:var(--mop);color:var(--on-mop)}
+.btn.ok{background:var(--ok-bg);border-color:transparent;color:var(--ok)}
+.btn.bad{background:var(--bad-bg);border-color:transparent;color:var(--bad)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:8px}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+.btn svg{width:18px;height:18px;flex:none}
+
+/* fields */
+.field{display:grid;gap:6px;margin-bottom:14px}
+.field label,.field .lbl{font-weight:600;font-size:13.5px}
+.field small{color:var(--ink-2);font-size:12.5px}
+input[type=text],input[type=password],input[type=date],select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+textarea{resize:vertical;min-height:84px}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
+
+/* auth screens */
+.auth{min-height:100vh;display:grid;place-items:center;padding:24px 16px}
+.auth-card{width:100%;max-width:420px;background:var(--surface);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+.auth-top{background:var(--brand);color:var(--on-brand);padding:26px 26px 22px;position:relative}
+.auth-top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:repeating-linear-gradient(-45deg,var(--mop) 0 14px,var(--brand-2) 14px 28px)}
+.auth-top h1{font-size:28px;font-weight:800}
+.auth-top p{margin:6px 0 0;opacity:.85}
+.auth-body{padding:24px 26px 26px}
+.auth-body .btn{width:100%;padding:12px}
+.hint{color:var(--ink-2);font-size:13px;margin:14px 0 0;text-align:center}
+
+/* header */
+.top{background:var(--brand);color:var(--on-brand);position:sticky;top:env(safe-area-inset-top,0px);z-index:20}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:21;background:var(--brand)}
+.top-in{display:flex;align-items:center;gap:14px;padding-top:14px;padding-bottom:10px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+.logo{width:40px;height:40px;border-radius:12px;background:var(--mop);color:var(--on-mop);display:grid;place-items:center;flex:none}
+.logo svg{width:24px;height:24px}
+.b-title{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:19px;line-height:1.1}
+.b-sub{font-size:12.5px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who{text-align:right;line-height:1.2}
+.who-name{font-weight:700;font-size:14px}
+.who-role{font-size:12px;opacity:.8}
+.top .btn.ghost{color:var(--on-brand)}
+.top .btn.ghost:hover{background:rgba(255,255,255,.12)}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{background:none;border:0;color:var(--on-brand);opacity:.75;padding:10px 14px 12px;font-weight:600;cursor:pointer;border-bottom:4px solid transparent;white-space:nowrap}
+.tab:hover{opacity:1}
+.tab.on{opacity:1;border-bottom-color:var(--mop)}
+.stripe{height:6px;background:repeating-linear-gradient(-45deg,var(--mop) 0 14px,var(--brand-2) 14px 28px)}
+
+main{padding:22px 0 60px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:18px}
+.toolbar .field{margin:0;min-width:160px}
+.toolbar .grow{flex:1}
+.banner{background:var(--wait-bg);color:var(--wait);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-weight:500}
+
+/* hero progress */
+.hero{background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:22px;margin-bottom:20px;display:grid;grid-template-columns:auto 1fr;gap:6px 24px;align-items:center}
+.hero-num{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:64px;line-height:.9;letter-spacing:-.02em}
+.hero-num span{color:var(--ink-2);font-size:32px;font-weight:600}
+.hero-txt h2{font-size:20px}
+.hero-txt p{margin:4px 0 0;color:var(--ink-2)}
+.bucket{grid-column:1/-1;height:14px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;margin-top:12px}
+.bucket i{display:block;height:100%;background:var(--mop);border-radius:99px;transition:width .5s ease}
+
+/* list cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.card{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:16px;display:flex;flex-direction:column;gap:8px}
+.card h3{font-size:17px}
+.card .loc{color:var(--ink-2);font-size:13px;margin:0}
+.card .foot{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:auto;padding-top:6px}
+.chip{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12.5px;font-weight:700;white-space:nowrap}
+.chip.ok{background:var(--ok-bg);color:var(--ok)}
+.chip.wait{background:var(--wait-bg);color:var(--wait)}
+.chip.bad{background:var(--bad-bg);color:var(--bad)}
+.chip.idle{background:var(--idle-bg);color:var(--idle)}
+.note{background:var(--surface-2);border-left:4px solid var(--line);padding:8px 10px;border-radius:6px;font-size:13.5px;margin:0}
+.note.bad{border-left-color:var(--bad)}
+.muted{color:var(--ink-2)}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+.stat{background:var(--surface);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.stat b{display:block;font-family:"Bricolage Grotesque",sans-serif;font-size:32px;line-height:1}
+.stat span{color:var(--ink-2);font-size:13px}
+.stat.wait b{color:var(--wait)} .stat.bad b{color:var(--bad)} .stat.ok b{color:var(--ok)}
+.sec-title{font-size:18px;margin:26px 0 12px}
+
+/* report cards */
+.reps{display:grid;gap:14px}
+.rep{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);display:grid;grid-template-columns:minmax(220px,300px) 1fr;overflow:hidden}
+.rep-photos{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:var(--line)}
+.ph{position:relative;border:0;padding:0;margin:0;background:var(--surface-2);cursor:zoom-in;aspect-ratio:3/4;overflow:hidden;display:block;width:100%}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph span{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.6);color:#fff;font-size:11.5px;padding:2px 7px;border-radius:6px;font-weight:600}
+.ph.none{cursor:default;display:grid;place-items:center;color:var(--ink-2);font-size:12.5px;text-align:center;padding:8px}
+.ph.none span{position:static;background:none;color:var(--ink-2)}
+.rep-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.rep-head{display:flex;justify-content:space-between;gap:10px;align-items:start}
+.rep-head h3{font-size:17px}
+.meta{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--ink-2);font-size:13px;margin:0}
+details{font-size:13.5px}
+summary{cursor:pointer;font-weight:600}
+.checks{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:3px}
+.checks li{display:flex;gap:8px;align-items:start}
+.checks li::before{content:"";flex:none;width:16px;height:16px;margin-top:2px;border-radius:4px;border:2px solid var(--line)}
+.checks li.y::before{background:var(--ok);border-color:var(--ok);box-shadow:inset 0 0 0 2px var(--surface)}
+.checks li.n{color:var(--ink-2);text-decoration:line-through}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:auto}
+@media (max-width:640px){
+  .rep{grid-template-columns:1fr}
+  .hero{grid-template-columns:1fr}
+  .hero-num{font-size:52px}
+  .who{display:none}
+}
+
+/* tables */
+.tbl-wrap{overflow-x:auto;background:var(--surface);border-radius:14px;box-shadow:var(--shadow)}
+table.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+.tbl th,.tbl td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl th{font-size:12.5px;color:var(--ink-2);font-weight:700;background:var(--surface-2)}
+.tbl tr:last-child td{border-bottom:0}
+
+.empty{background:var(--surface);border:2px dashed var(--line);border-radius:16px;padding:34px 20px;text-align:center}
+.empty h3{font-size:19px;margin-bottom:6px}
+.empty p{color:var(--ink-2);margin:0 0 16px}
+.missing{display:flex;flex-wrap:wrap;gap:8px}
+.missing span{background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:13.5px}
+
+/* modal */
+#modal{position:fixed;inset:0;z-index:50;display:none}
+#modal.open{display:block}
+.backdrop{position:absolute;inset:0;background:rgba(8,16,20,.55)}
+.sheet{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100vw - 24px));max-height:calc(100% - 32px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));overflow:auto;background:var(--surface);border-radius:18px;box-shadow:0 30px 60px -20px rgba(0,0,0,.5)}
+.sheet.wide{width:min(900px,calc(100vw - 24px))}
+.sheet-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:18px 20px 10px;position:sticky;top:0;background:var(--surface);z-index:1}
+.sheet-h h2{font-size:21px}
+.sheet-b{padding:4px 20px 20px}
+.sheet-f{display:flex;gap:10px;justify-content:flex-end;padding:12px 20px 18px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
+.checkrow{display:flex;gap:10px;align-items:start;padding:9px 10px;border-radius:10px;cursor:pointer}
+.checkrow:hover{background:var(--surface-2)}
+.checkrow input{width:20px;height:20px;margin:1px 0 0;accent-color:var(--brand);flex:none}
+.picks{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pick{display:block;border:2px dashed var(--line);border-radius:14px;overflow:hidden;cursor:pointer;background:var(--surface-2);text-align:center}
+.pick:hover{border-color:var(--brand)}
+.pick .pv{aspect-ratio:3/4;display:grid;place-items:center;color:var(--ink-2);font-size:13px;padding:8px}
+.pick .pv img{width:100%;height:100%;object-fit:cover}
+.pick .pv svg{width:34px;height:34px;opacity:.6}
+.pick b{display:block;padding:8px;font-size:13.5px;border-top:1px solid var(--line);background:var(--surface)}
+.pick.has .pv{padding:0}
+.zoom img{width:100%;border-radius:10px;display:block}
+.ro-check{display:grid;gap:4px}
+.toolbar:empty{display:none}
+.toolbar input,.toolbar select{height:44px}
+.rep-photos{background:var(--surface-2);gap:0}
+.ph + .ph{border-left:2px solid var(--surface)}
+.sr{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0)}
+.cam,.gal,.shot-acts .btn{position:relative}
+
+/* toast */
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:80;display:grid;gap:8px;width:min(420px,calc(100vw - 24px))}
+.tst{background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:12px;box-shadow:var(--shadow);font-weight:600;font-size:14px}
+.tst.bad{background:var(--bad);color:#fff}
+
+/* print preview */
+#printRoot{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:auto}
+#printRoot[hidden]{display:none}
+.pr-bar{position:sticky;top:0;z-index:2;background:var(--surface);border-bottom:1px solid var(--line);padding:12px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pr-bar h2{font-size:18px;flex:1;min-width:180px}
+.pr-page{max-width:860px;margin:22px auto 60px;background:var(--paper);color:var(--paper-ink);padding:36px 40px;box-shadow:var(--shadow);border-radius:4px}
+@media (max-width:640px){.pr-page{padding:20px 16px;margin:12px}}
+.loading{display:grid;place-items:center;min-height:60vh;color:var(--ink-2)}
+.spin{width:34px;height:34px;border:4px solid var(--line);border-top-color:var(--brand);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 12px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation-duration:3s}.bucket i{transition:none}}
+
+/* ===== Desktop: admin / manager ===== */
+.desk{display:grid;grid-template-columns:252px 1fr;min-height:100vh}
+.side{background:var(--brand);color:var(--on-brand);position:sticky;top:env(safe-area-inset-top,0px);height:calc(100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;padding:22px 14px 18px;gap:22px;z-index:20}
+.side .brand{flex:none;padding:0 6px}
+.side .mob-acts{display:none;gap:4px}
+.snav{display:grid;gap:4px}
+.snav .tab{display:flex;align-items:center;gap:12px;border:0;border-radius:10px;padding:11px 12px;text-align:left;width:100%;font-size:15px}
+.snav .tab svg{width:20px;height:20px;flex:none}
+.snav .tab:hover{background:rgba(255,255,255,.08)}
+.snav .tab.on{background:rgba(255,255,255,.15);box-shadow:inset 4px 0 0 var(--mop)}
+.side-foot{margin-top:auto;border-top:1px solid rgba(255,255,255,.2);padding:14px 6px 0;display:grid;gap:10px}
+.side-foot .who{text-align:left;display:block}
+.side-foot .row{display:flex;gap:6px}
+.side .btn.ghost{color:var(--on-brand)}
+.side .btn.ghost:hover{background:rgba(255,255,255,.12)}
+.desk-main{min-width:0}
+.desk-main main{padding:30px 34px 60px}
+.desk-main .wrap{max-width:1320px;padding:0}
+.page-title{font-size:30px;font-weight:800;margin:0 0 4px}
+.page-date{color:var(--ink-2);margin:0 0 18px}
+@media (min-width:1300px){.desk .reps{grid-template-columns:1fr 1fr}}
+@media (max-width:899px){
+  .desk{grid-template-columns:minmax(0,1fr)}
+  .side{min-width:0}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .side{height:auto;padding:12px 12px 0;gap:8px}
+  .side .brand{padding:0}
+  .side .mob-acts{display:flex}
+  .snav{display:flex;overflow-x:auto;scrollbar-width:none}
+  .snav::-webkit-scrollbar{display:none}
+  .snav .tab{width:auto;white-space:nowrap;border-radius:8px 8px 0 0;padding:9px 12px 11px}
+  .snav .tab.on{box-shadow:inset 0 -4px 0 var(--mop);background:transparent}
+  .side-foot{display:none}
+  .desk-main main{padding:18px 14px 60px}
+  .page-title{font-size:24px}
+}
+
+/* ===== Mobile app: staff ===== */
+.mob{max-width:560px;margin:0 auto;min-height:100vh;padding-bottom:calc(78px + env(safe-area-inset-bottom,0px));background:var(--bg)}
+.mob-top{background:var(--brand);color:var(--on-brand);position:sticky;top:env(safe-area-inset-top,0px);z-index:20;padding:12px 16px 14px;display:flex;align-items:center;gap:12px}
+.mob-top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:repeating-linear-gradient(-45deg,var(--mop) 0 12px,var(--brand-2) 12px 24px)}
+.mob-top .who{display:block}
+.mob main{padding:18px 14px 24px}
+.mob .wrap{padding:0}
+.mob .grid{grid-template-columns:1fr;gap:12px}
+.mob .hero{grid-template-columns:auto 1fr;padding:18px}
+.mob .hero-num{font-size:54px}
+.mob .toolbar .field{flex:1 1 140px}
+.mob .toolbar .grow{display:none}
+.mob .toolbar .btn{flex:1 1 100%;padding:13px}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom,0px);box-shadow:0 -6px 20px -14px rgba(0,0,0,.4)}
+.bnav-in{display:grid;grid-template-columns:repeat(3,1fr);width:100%;max-width:560px}
+.bnav .tab{color:var(--ink-2);opacity:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px 10px;font-size:12.5px;border:0;border-top:3px solid transparent;background:none;cursor:pointer;font-weight:600}
+.bnav .tab svg{width:26px;height:26px}
+.bnav .tab.on{color:var(--brand);border-top-color:var(--mop)}
+.task{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:16px;display:grid;gap:10px}
+.task-h{display:flex;justify-content:space-between;align-items:start;gap:10px}
+.task h3{font-size:18px}
+.task .btn{width:100%;padding:14px;font-size:16px;border-radius:12px}
+.task .btn svg{width:22px;height:22px}
+.prof{display:flex;align-items:center;gap:14px}
+.avatar{width:56px;height:56px;border-radius:50%;background:var(--mop);color:var(--on-mop);display:grid;place-items:center;font:800 22px "Bricolage Grotesque",sans-serif;flex:none}
+.stack{display:grid;gap:10px;margin-top:14px}
+.stack .btn{justify-content:flex-start;padding:15px 16px;font-size:16px;border-radius:12px}
+
+/* ===== Work form: steps + camera ===== */
+.step{display:grid;grid-template-columns:34px 1fr;gap:12px;margin-bottom:22px}
+.step-n{width:34px;height:34px;border-radius:50%;background:var(--surface-2);border:2px solid var(--brand);color:var(--brand);display:grid;place-items:center;font-weight:800}
+.step-n.done{background:var(--ok);border-color:var(--ok);color:#fff}
+.step h3{font-size:17px;margin:5px 0 10px}
+.cam{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;width:100%;min-height:130px;border:2px dashed var(--brand);border-radius:16px;background:color-mix(in srgb,var(--brand) 9%,var(--surface));color:var(--brand);font-weight:800;font-size:16px;cursor:pointer;padding:18px;text-align:center}
+.cam:hover{background:color-mix(in srgb,var(--brand) 15%,var(--surface))}
+.cam svg{width:42px;height:42px}
+.cam small{font-weight:600;color:var(--ink-2);font-size:13px}
+.cam:focus-within{outline:3px solid var(--mop);outline-offset:2px}
+.gal{display:block;text-align:center;margin-top:6px;font-size:14px;color:var(--brand);font-weight:700;cursor:pointer;padding:10px;text-decoration:underline;text-underline-offset:3px}
+.shot{position:relative;border-radius:16px;overflow:hidden;background:var(--surface-2)}
+.shot img{width:100%;max-height:320px;object-fit:cover;display:block}
+.shot-ok{position:absolute;left:10px;top:10px;background:var(--ok);color:#fff;font-weight:700;font-size:13px;padding:4px 10px;border-radius:99px}
+.shot-acts{display:flex;gap:8px;margin-top:8px}
+.shot-acts .btn{flex:1}
+/* bigger targets on touch devices / phones */
+.touch .cam{min-height:220px;font-size:20px;border-width:3px;border-radius:20px}
+.touch .cam svg{width:76px;height:76px}
+.touch .cam small{font-size:14.5px}
+.touch .shot img{max-height:46vh}
+.touch .shot-acts .btn{padding:14px;font-size:15.5px}
+.touch .checkrow{padding:14px 12px;font-size:16px;border:1px solid var(--line);margin-bottom:8px;border-radius:12px;background:var(--surface)}
+.touch .checkrow input{width:26px;height:26px}
+.touch .sheet-f .btn{flex:1;padding:15px;font-size:16px;border-radius:12px}
+.touch textarea{font-size:16px}
+@media (max-width:700px){
+  .sheet,.sheet.wide{left:0;top:0;transform:none;width:100%;height:100%;max-height:none;border-radius:0}
+  .sheet-h{padding-top:calc(14px + env(safe-area-inset-top,0px));border-bottom:1px solid var(--line);padding-bottom:12px}
+  .sheet-b{padding-top:16px}
+  .sheet-f{padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+}
+
+@media print{
+  @page{size:A4;margin:14mm}
+  body{background:#fff}
+  body::before{display:none}
+  body > :not(#printRoot){display:none!important}
+  #printRoot{position:static;overflow:visible;background:#fff}
+  .pr-bar{display:none}
+  .pr-page{box-shadow:none;margin:0;padding:0;max-width:none}
+}
+
+
+/* ===== field app additions ===== */
+.mapwrap{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:20px;position:relative}
+#map{height:430px}
+.map-legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 14px;font-size:12.5px;color:var(--ink-2);border-top:1px solid var(--line)}
+.map-legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.minimap{height:210px;border-radius:12px;overflow:hidden;margin-top:10px;border:1px solid var(--line);background:var(--surface-2)}
+.leaflet-container{font:inherit}
+.leaflet-popup-content{font:13px/1.45 Manrope,system-ui,sans-serif;margin:10px 12px}
+.pin{display:grid;place-items:center;width:32px;height:32px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+.pin b{transform:rotate(45deg);color:#fff;font:800 10.5px Manrope,Arial,sans-serif;letter-spacing:.02em}
+.pin.go{background:#D97706}.pin.ok{background:#1E8A52}.pin.bad{background:#C0392B}.pin.out{background:#6D4ACF}.pin.unk{background:#5B6B82}
+.gps{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;gap:5px}
+.gps.bad{background:var(--bad-bg);border-color:transparent;color:var(--bad)}
+.gps .co{font:700 16px ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:.01em}
+.gps .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.spin.sm{width:16px;height:16px;border-width:3px;margin:0;display:inline-block;vertical-align:-3px}
+.linkbtn{background:none;border:0;color:var(--brand);font-weight:700;padding:4px 0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.live{background:var(--surface);border-radius:18px;box-shadow:var(--shadow);padding:20px;margin-bottom:20px;border-left:8px solid var(--mop);display:grid;gap:8px}
+.live h2{font-size:24px}
+.live p{margin:0;color:var(--ink-2)}
+.live .big{font:800 34px/1 "Bricolage Grotesque",sans-serif;color:var(--ink)}
+.cta-card{background:var(--brand);color:var(--on-brand);border-radius:18px;padding:22px;margin-bottom:20px;display:grid;gap:10px;position:relative;overflow:hidden}
+.cta-card::after{content:"";position:absolute;left:0;right:0;bottom:0;height:6px;background:repeating-linear-gradient(-45deg,var(--mop) 0 12px,var(--brand-2) 12px 24px)}
+.cta-card h2{font-size:24px}
+.cta-card p{margin:0;opacity:.85}
+.cta{width:100%;padding:16px;font-size:17px;border-radius:14px}
+.cta svg{width:24px;height:24px}
+.cta-card .cta{background:var(--mop);border-color:var(--mop);color:var(--on-mop)}
+.touch .cta{padding:20px;font-size:19px}
+.touch .cta svg{width:28px;height:28px}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13.5px;margin:2px 0}
+.kv dt{color:var(--ink-2)}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.flags{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+.flags li{background:var(--bad-bg);color:var(--bad);border-radius:8px;padding:6px 10px;font-size:12.5px;font-weight:600}
+.chip.go{background:var(--wait-bg);color:var(--wait)}
+.coord-help{font-size:12.5px;color:var(--ink-2)}
+.ph.single{aspect-ratio:3/4}
+.rep .ph span{bottom:auto;top:6px}
+#map,.minimap{position:relative;z-index:0;isolation:isolate}
+#modal{z-index:2000}#printRoot{z-index:2100}#toast{z-index:2200}
+.kv a{color:var(--brand);font-weight:700}
+.side .b-title{font-size:17px}
+.desk .reps{grid-template-columns:1fr!important}
+.touch #toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+</style>
+<style id="rptStyle"></style>
+</head>
+<body>
+<div id="app"><div class="loading"><div><div class="spin"></div>Memuat aplikasi…</div></div></div>
+<div id="modal" aria-hidden="true"></div>
+<div id="printRoot" hidden></div>
+<div id="toast" aria-live="polite"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="config.js"></script>
+<script>
+/* ======================================================================
+   Kunjungan Lapangan: check-in/out customer dengan GPS, foto, timestamp
+   Data: Firestore koleksi fv_accounts, fv_customers, fv_visits, fv_settings
+   ====================================================================== */
+const C = { acc:'fv_accounts', cust:'fv_customers', vis:'fv_visits', set:'fv_settings/app' };
+const PURPOSES = ['Kunjungan rutin', 'Survey lokasi', 'Instalasi', 'Perbaikan / service', 'Penagihan', 'Pengiriman barang', 'Meeting customer', 'Lainnya'];
+const ROLE = { manager:'Manager', staff:'Petugas lapangan' };
+
+const RPT_CSS = `
+.rpt{font:12px/1.45 Manrope,Arial,sans-serif;color:#1a1a1a}
+.rpt h1{font:800 21px/1.15 "Bricolage Grotesque",Arial,sans-serif;margin:0}
+.rpt h2{font:700 14.5px/1.2 "Bricolage Grotesque",Arial,sans-serif;margin:20px 0 8px}
+.rpt a{color:#1D3F8F}
+.rpt-h{display:flex;justify-content:space-between;gap:20px;border-bottom:3px solid #1D3F8F;padding-bottom:12px;margin-bottom:14px;flex-wrap:wrap}
+.rpt-h p{margin:3px 0 0;color:#444}
+.rpt-meta{display:grid;grid-template-columns:auto auto;gap:2px 12px;font-size:12px}
+.rpt-meta b{color:#555;font-weight:600}
+.rpt-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.rpt-sum div{border:1px solid #ccc;border-radius:6px;padding:8px 10px}
+.rpt-sum b{display:block;font:800 20px/1 "Bricolage Grotesque",Arial,sans-serif}
+.rpt-sum span{font-size:11px;color:#555}
+.rpt table{width:100%;border-collapse:collapse;font-size:11px}
+.rpt th,.rpt td{border:1px solid #bbb;padding:5px 6px;text-align:left;vertical-align:top}
+.rpt th{background:#EEF2FA;font-weight:700}
+.rpt .ok{color:#1d6a43;font-weight:700}.rpt .bad{color:#a33421;font-weight:700}.rpt .go{color:#9a5a00;font-weight:700}
+.rpt-photos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.rpt-photos figure{margin:0;border:1px solid #ccc;border-radius:6px;padding:6px;break-inside:avoid;page-break-inside:avoid}
+.rpt-photos .pair{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.rpt-photos .pair div{aspect-ratio:3/4;background:#f1f1f1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#777;overflow:hidden}
+.rpt-photos img{width:100%;height:100%;object-fit:cover;display:block}
+.rpt-photos figcaption{font-size:10.5px;margin-top:5px}
+.rpt-photos figcaption b{display:block;font-size:11.5px}
+.rpt-sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:32px;text-align:center;break-inside:avoid;page-break-inside:avoid}
+.rpt-sign .ln{border-top:1px solid #333;margin-top:64px;padding-top:4px;font-weight:700}
+.rpt-foot{margin-top:16px;font-size:10px;color:#777}
+@media (max-width:600px){.rpt-sum{grid-template-columns:1fr 1fr}.rpt-photos{grid-template-columns:1fr}}
+`;
+document.getElementById('rptStyle').textContent = RPT_CSS;
+
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const dstr = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today = () => dstr(new Date());
+const fmtDate = ds => { const [y,m,d] = ds.split('-').map(Number); return new Date(y, m-1, d).toLocaleDateString('id-ID', {weekday:'long', day:'numeric', month:'long', year:'numeric'}); };
+const fmtTime = d => d ? new Date(d).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}) : '–';
+const fmtTimeS = d => d ? new Date(d).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '–';
+const fmtStamp = d => d.toLocaleString('id-ID', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+const tsDate = v => v && typeof v.toDate === 'function' ? v.toDate() : (v ? new Date(v) : null);
+const ptTime = p => p ? (tsDate(p.server) || new Date(p.device)) : null;
+const hasLoc = c => !!c && typeof c.lat === 'number' && typeof c.lng === 'number';
+const gmaps = (lat, lng) => `https://www.google.com/maps?q=${lat},${lng}`;
+const initials = n => String(n || '?').replace(/\(.*?\)/g, '').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+function haversine(a, b) {
+  const R = 6371000, r = x => x * Math.PI / 180;
+  const dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat/2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng/2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const fmtDist = m => m == null ? '–' : m < 1000 ? `${Math.round(m)} m` : `${(m/1000).toFixed(1).replace('.', ',')} km`;
+function fmtDur(ms) { if (ms == null || ms < 0) return '–'; const m = Math.round(ms / 60000); const h = Math.floor(m / 60); return h ? `${h} jam ${m % 60} mnt` : `${m} mnt`; }
+function parseCoord(s) {
+  const m = String(s || '').match(/(-?\d{1,2}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)/);
+  if (!m) return null; const lat = +m[1], lng = +m[2];
+  return (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) ? { lat, lng } : null;
+}
+function ss(k, v) { try { if (v === undefined) return sessionStorage.getItem(k); if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch (e) { return null; } }
+function toast(msg, kind) { const el = document.createElement('div'); el.className = 'tst ' + (kind || ''); el.textContent = msg; $('#toast').appendChild(el); setTimeout(() => el.remove(), kind === 'bad' ? 5500 : 3400); }
+function errMsg(e) {
+  if (!e) return 'Terjadi kesalahan.';
+  if (e.code === 'permission-denied') return 'Akses database ditolak. Periksa Rules Firestore (koleksi fv_...).';
+  if (e.code === 'unavailable') return 'Tidak ada koneksi internet. Coba lagi saat sinyal tersedia.';
+  if (e.code === 'resource-exhausted') return 'Kuota Firebase habis untuk hari ini.';
+  return e.message || String(e);
+}
+async function hashPw(username, pw) {
+  const txt = 'kbr-v1:' + username + ':' + pw;
+  try { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt)); return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join(''); }
+  catch (e) { let h = 5381; for (const c of txt) h = ((h << 5) + h + c.charCodeAt(0)) | 0; return 'x' + (h >>> 0).toString(16); }
+}
+const ICON = {
+  logo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.6"/></svg>',
+  pin:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.6"/></svg>',
+  cam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  print:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h4v16h-4"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h10"/></svg>',
+  exit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H5v16h4"/><path d="M14 8l4 4-4 4"/><path d="M18 12H8"/></svg>',
+  key:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/></svg>',
+  dl:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  map:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>',
+  bld:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V5l8-2v18M12 8l8 2v11M3 21h18M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2"/></svg>',
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .7 3.2 2.5 3.6 5.2"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',
+  hist:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
+  user:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>'
+};
+const chip = (t, c) => `<span class="chip ${c}">${esc(t)}</span>`;
+
+/* ---------- Firebase / PWA ---------- */
+const configOk = () => window.FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && !/^ISI/.test(FIREBASE_CONFIG.apiKey);
+const TOUCH = matchMedia('(pointer: coarse), (max-width: 700px)');
+const syncTouch = () => document.documentElement.classList.toggle('touch', TOUCH.matches);
+syncTouch(); try { TOUCH.addEventListener('change', syncTouch); } catch (e) {}
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; document.querySelectorAll('.install-btn').forEach(b => b.hidden = false); });
+window.addEventListener('appinstalled', () => { installEvt = null; document.querySelectorAll('.install-btn').forEach(b => b.hidden = true); toast('Aplikasi terpasang di HP Anda.'); });
+const installBtn = cls => `<button type="button" class="btn ${cls || ''} install-btn" data-act="install" ${installEvt ? '' : 'hidden'}>⬇ Pasang aplikasi di HP</button>`;
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+function download(filename, data, type) {
+  const blob = new Blob([data], { type }); const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+let SERVER = () => new Date().toISOString();
+
+/* ---------- state ---------- */
+const S = { db:null, accounts:{}, accLoaded:false, customers:[], visits:[], visLoaded:false, active:[], settings:{}, me:null, tab:null,
+  date:today(), staffFilter:'', unsubVis:null, unsubAct:null, screen:null, pending:false };
+const me = () => S.accounts[S.me] || {};
+const isMgr = () => me().role === 'manager';
+const nameOf = u => S.accounts[u]?.name || u;
+const staffList = () => Object.entries(S.accounts).filter(([, a]) => a.role === 'staff').map(([u, a]) => ({ u, ...a })).sort((a, b) => a.name.localeCompare(b.name));
+const defRadius = () => +S.settings.radius || 150;
+const custOf = v => v.customerId ? S.customers.find(c => c.id === v.customerId) : null;
+const byInDesc = (a, b) => (ptTime(b.in) || 0) - (ptTime(a.in) || 0);
+
+/* ---------- boot ---------- */
+async function init() {
+  const slow = setTimeout(() => { if (!S.accLoaded) $('#app').innerHTML = msgScreen('Data belum bisa dimuat', 'Periksa koneksi internet Anda. Halaman ini akan tampil sendiri begitu data tersedia.'); }, 10000);
+  if (!window.firebase || !configOk()) { clearTimeout(slow); $('#app').innerHTML = msgScreen('Aplikasi belum terhubung ke database', !window.firebase ? 'Library Firebase gagal dimuat. Periksa koneksi internet lalu muat ulang.' : 'Isi file config.js dengan konfigurasi Firebase Anda.'); return; }
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.firestore();
+  try { await db.enablePersistence({ synchronizeTabs: true }); } catch (e) {}
+  S.db = db; SERVER = () => firebase.firestore.FieldValue.serverTimestamp();
+  db.collection(C.acc).onSnapshot(snap => {
+    S.accounts = {}; snap.docs.forEach(d => { S.accounts[d.id] = d.data(); });
+    if (!snap.metadata.fromCache || snap.size) { S.accLoaded = true; clearTimeout(slow); }
+    route();
+  }, e => { clearTimeout(slow); $('#app').innerHTML = msgScreen('Data akun tidak bisa dimuat', errMsg(e)); });
+  db.collection(C.cust).onSnapshot(snap => {
+    S.customers = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
+    refresh();
+  }, e => toast('Data customer tidak bisa dimuat: ' + errMsg(e), 'bad'));
+  db.doc(C.set).onSnapshot(snap => {
+    S.settings = snap.exists ? snap.data() : {};
+    const o = $('#officeName'); if (o) o.textContent = S.settings.officeName || '';
+    const lo = $('#loginOffice'); if (lo) lo.textContent = S.settings.officeName || 'Laporan kunjungan petugas lapangan';
+    if (S.tab === 'pengaturan') renderContent();
+  }, () => {});
+  subVisits();
+}
+function subVisits() {
+  if (S.unsubVis) S.unsubVis();
+  S.visLoaded = false;
+  S.unsubVis = S.db.collection(C.vis).where('date', '==', S.date).onSnapshot(snap => {
+    S.visits = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort(byInDesc); S.visLoaded = true; refresh();
+  }, e => toast('Kunjungan tidak bisa dimuat: ' + errMsg(e), 'bad'));
+}
+function subActive() {
+  if (S.unsubAct) { S.unsubAct(); S.unsubAct = null; }
+  S.active = [];
+  if (!S.me || isMgr()) return;
+  S.unsubAct = S.db.collection(C.vis).where('username', '==', S.me).where('status', '==', 'berlangsung').onSnapshot(snap => {
+    S.active = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort(byInDesc); refresh();
+  }, e => toast('Status kunjungan tidak bisa dimuat: ' + errMsg(e), 'bad'));
+}
+function setDate(d) { if (d && d !== S.date) { S.date = d; mapFit = true; subVisits(); } }
+function refresh() { if (S.screen && S.screen.startsWith('app')) { renderContent(); if (S.tab === 'pantau') updateMap(); } }
+
+function route() {
+  let scr;
+  if (!S.accLoaded) scr = 'loading';
+  else if (!Object.keys(S.accounts).length) scr = 'setup';
+  else {
+    if (!S.me) { const u = ss('fv-user'); if (u && S.accounts[u] && S.accounts[u].active !== false) S.me = u; }
+    if (S.me && (!S.accounts[S.me] || S.accounts[S.me].active === false)) { S.me = null; ss('fv-user', null); }
+    scr = S.me ? 'app:' + S.me + ':' + me().role : 'login';
+  }
+  if (scr !== S.screen) { S.screen = scr; paint(scr); }
+  else if (scr.startsWith('app')) { updateHeader(); renderContent(); }
+}
+
+/* ---------- screens ---------- */
+function msgScreen(t, p) { return `<div class="auth"><div class="auth-card"><div class="auth-top"><h1>${esc(t)}</h1></div><div class="auth-body"><p class="muted" style="margin:0">${esc(p)}</p></div></div></div>`; }
+function paint(scr) {
+  closeModal(); MAP = null;
+  const app = $('#app');
+  if (scr === 'loading') { app.innerHTML = `<div class="loading"><div><div class="spin"></div>Memuat data…</div></div>`; return; }
+  if (scr === 'setup') {
+    app.innerHTML = `<div class="auth"><div class="auth-card">
+      <div class="auth-top"><h1>Siapkan aplikasi</h1><p>Buat akun manager pertama. Akun petugas lapangan bisa ditambahkan setelah ini.</p></div>
+      <form class="auth-body" data-form="setup" autocomplete="off">
+        <div class="field"><label for="s-office">Nama perusahaan</label><input id="s-office" type="text" name="office" required></div>
+        <div class="field"><label for="s-name">Nama manager</label><input id="s-name" type="text" name="name" required></div>
+        <div class="field"><label for="s-user">Username</label><input id="s-user" type="text" name="username" autocapitalize="none" required><small>Huruf kecil, angka, titik, garis bawah.</small></div>
+        <div class="field"><label for="s-pw">Password</label><input id="s-pw" type="password" name="pw" minlength="6" required></div>
+        <div class="field"><label for="s-pw2">Ulangi password</label><input id="s-pw2" type="password" name="pw2" minlength="6" required></div>
+        <button class="btn primary" type="submit">Buat akun manager</button>
+      </form></div></div>`;
+    return;
+  }
+  if (scr === 'login') {
+    app.innerHTML = `<div class="auth"><div class="auth-card">
+      <div class="auth-top"><h1>Kunjungan Lapangan</h1><p id="loginOffice">${esc(S.settings.officeName || 'Laporan kunjungan petugas lapangan')}</p></div>
+      <form class="auth-body" data-form="login">
+        <div class="field"><label for="l-user">Username</label><input id="l-user" type="text" name="username" autocapitalize="none" autocomplete="username" required></div>
+        <div class="field"><label for="l-pw">Password</label><input id="l-pw" type="password" name="pw" autocomplete="current-password" required></div>
+        <button class="btn primary" type="submit">Masuk</button>
+        <p class="hint">Lupa password? Minta manager mengatur ulang password Anda.</p>
+        <div style="margin-top:14px">${installBtn('mop')}</div>
+      </form></div></div>`;
+    return;
+  }
+  const brand = `<div class="brand"><span class="logo">${ICON.logo}</span><div style="min-width:0"><div class="b-title">Kunjungan Lapangan</div><div class="b-sub" id="officeName">${esc(S.settings.officeName || '')}</div></div></div>`;
+  if (isMgr()) {
+    const tabs = [['pantau','Pemantauan',ICON.map], ['customer','Customer',ICON.bld], ['pengguna','Pengguna',ICON.users], ['pengaturan','Pengaturan',ICON.gear]];
+    if (!tabs.some(t => t[0] === S.tab)) S.tab = 'pantau';
+    app.innerHTML = `<div class="desk">
+      <aside class="side">
+        <div style="display:flex;align-items:center;gap:8px">${brand}
+          <div class="mob-acts"><button class="btn ghost sm" data-act="pw" aria-label="Ganti password">${ICON.key}</button><button class="btn ghost sm" data-act="logout" aria-label="Keluar">${ICON.out}</button></div></div>
+        <nav class="snav" role="tablist">${tabs.map(([k, l, ic]) => `<button class="tab" role="tab" data-act="tab" data-tab="${k}">${ic}<span>${l}</span></button>`).join('')}</nav>
+        <div class="side-foot">
+          <div class="who"><div class="who-name" id="whoName"></div><div class="who-role">Manager</div></div>
+          <div class="row"><button class="btn ghost sm" data-act="pw">${ICON.key}Password</button><button class="btn ghost sm" data-act="logout">${ICON.out}Keluar</button></div>
+        </div>
+      </aside>
+      <div class="desk-main"><main><div class="wrap">
+        <h1 class="page-title" id="pageTitle"></h1><p class="page-date" id="pageSub"></p>
+        <div id="toolbar" class="toolbar"></div>
+        <div id="mapWrap" class="mapwrap" hidden><div id="map"></div>
+          <div class="map-legend"><span><i style="background:#1E8A52"></i>Check-in di lokasi</span><span><i style="background:#C0392B"></i>Check-in di luar radius</span><span><i style="background:#D97706"></i>Sedang berkunjung</span><span><i style="background:#6D4ACF"></i>Check-out</span><span><i style="background:#5B6B82"></i>Customer belum ada titik</span><span><i style="background:transparent;border:2px solid #5B6B82"></i>Radius customer</span></div></div>
+        <div id="content"></div>
+      </div></main></div></div>`;
+  } else {
+    const tabs = [['kunjungan','Kunjungan',ICON.pin], ['riwayat','Riwayat',ICON.hist], ['akun','Akun',ICON.user]];
+    if (!tabs.some(t => t[0] === S.tab)) S.tab = 'kunjungan';
+    app.innerHTML = `<div class="mob">
+      <header class="mob-top">${brand}<div class="who" style="text-align:right"><div class="who-name" id="whoName"></div><div class="who-role">Petugas</div></div></header>
+      <main><div class="wrap"><div id="toolbar" class="toolbar"></div><div id="content"></div></div></main>
+      <nav class="bnav" role="tablist"><div class="bnav-in">${tabs.map(([k, l, ic]) => `<button class="tab" role="tab" data-act="tab" data-tab="${k}">${ic}<span>${l}</span></button>`).join('')}</div></nav>
+    </div>`;
+  }
+  subActive();
+  updateHeader();
+  setTab(S.tab);
+}
+function updateHeader() { const n = $('#whoName'); if (n) n.textContent = me().name || ''; }
+const TITLES = { pantau:['Pemantauan kunjungan','Posisi check-in dan check-out petugas, foto bukti, dan waktu server.'], customer:['Customer','Daftar customer beserta titik lokasi dan radius absen.'], pengguna:['Pengguna','Akun manager dan petugas lapangan.'], pengaturan:['Pengaturan','Identitas perusahaan dan radius default.'] };
+function setTab(t) {
+  S.tab = t;
+  document.querySelectorAll('.tab').forEach(b => { b.classList.toggle('on', b.dataset.tab === t); b.setAttribute('aria-selected', b.dataset.tab === t); });
+  if (t === 'kunjungan') setDate(today());
+  const pt = $('#pageTitle'); if (pt && TITLES[t]) { pt.textContent = TITLES[t][0]; $('#pageSub').textContent = TITLES[t][1]; }
+  const mw = $('#mapWrap'); if (mw) mw.hidden = t !== 'pantau';
+  renderToolbar(); renderContent();
+  if (t === 'pantau') { mapFit = true; setTimeout(updateMap, 30); }
+  window.scrollTo(0, 0);
+}
+function renderToolbar() {
+  const tb = $('#toolbar'); if (!tb) return;
+  const dateField = `<div class="field"><label for="f-date">Tanggal</label><input id="f-date" type="date" value="${S.date}" max="${today()}" data-change="date"></div>`;
+  const printBtn = `<button class="btn mop" data-act="print">${ICON.print}Cetak laporan</button>`;
+  if (S.tab === 'pantau') tb.innerHTML = dateField + `<div class="field"><label for="f-staff">Petugas</label><select id="f-staff" data-change="staff"><option value="">Semua petugas</option>${staffList().map(s => `<option value="${esc(s.u)}"${S.staffFilter === s.u ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div><div class="grow"></div><button class="btn" data-act="csv">${ICON.dl}Unduh Excel (CSV)</button>` + printBtn;
+  else if (S.tab === 'riwayat') tb.innerHTML = dateField + '<div class="grow"></div>' + printBtn;
+  else if (S.tab === 'customer') tb.innerHTML = `<div class="grow"></div><button class="btn primary" data-act="custForm">${ICON.plus}Tambah customer</button>`;
+  else if (S.tab === 'pengguna') tb.innerHTML = `<div class="grow"></div><button class="btn primary" data-act="userForm">${ICON.plus}Tambah pengguna</button>`;
+  else tb.innerHTML = '';
+}
+function renderContent() {
+  const c = $('#content'); if (!c) return;
+  const ae = document.activeElement;
+  if (ae && c.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { S.pending = true; return; }
+  S.pending = false;
+  c.innerHTML = (VIEWS[S.tab] || (() => ''))();
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (S.pending) renderContent(); }, 60));
+setInterval(() => { if (S.tab === 'kunjungan' && S.active.length) renderContent(); }, 60000);
+
+/* ---------- visit rendering ---------- */
+const loadingBlock = () => `<div class="loading" style="min-height:30vh"><div><div class="spin"></div>Memuat kunjungan…</div></div>`;
+function flagsOf(v) {
+  const f = [];
+  if (v.in?.inside === false) f.push(`Check-in berjarak ${fmtDist(v.in.dist)} dari titik customer (radius ${v.in.radius} m)`);
+  if (v.out?.inside === false) f.push(`Check-out berjarak ${fmtDist(v.out.dist)} dari titik customer`);
+  for (const [k, l] of [['in', 'check-in'], ['out', 'check-out']]) {
+    const p = v[k]; if (!p) continue;
+    if (p.acc > 100) f.push(`Akurasi GPS ${l} rendah (±${p.acc} m)`);
+    const sv = tsDate(p.server);
+    if (sv) { const diff = Math.abs(sv - new Date(p.device)) / 60000; if (diff > 5) f.push(`Waktu ${l} di HP selisih ${Math.round(diff)} menit dari waktu server (dikirim tanpa sinyal, atau jam HP tidak sesuai)`); }
+  }
+  return f;
+}
+function locChip(p) { return p.inside === true ? chip('Di lokasi', 'ok') : p.inside === false ? chip('Di luar radius', 'bad') : chip('Titik customer belum ada', 'idle'); }
+function ptLine(p) {
+  return `${fmtTimeS(ptTime(p))} <span class="muted">±${p.acc} m${p.dist != null ? `, ${fmtDist(p.dist)} dari customer` : ''}</span> <a href="${gmaps(p.lat, p.lng)}" target="_blank" rel="noopener">Lihat peta</a>`;
+}
+function photoBtn(v, k) {
+  const p = v[k]; const label = k === 'in' ? 'Check-in' : 'Check-out';
+  return p?.photo ? `<button class="ph" data-act="zoom" data-id="${esc(v.id)}" data-k="${k}" aria-label="Perbesar foto ${label}"><img src="${esc(p.photo)}" alt="Foto ${label} ${esc(v.customerName)}" loading="lazy"><span>${label}</span></button>`
+    : `<div class="ph none"><span>${p ? 'Tanpa foto ' : 'Belum '}${label.toLowerCase()}</span></div>`;
+}
+function visitCard(v, mgr) {
+  const tin = ptTime(v.in), tout = v.out ? ptTime(v.out) : null;
+  const dur = tout ? tout - tin : Date.now() - tin;
+  const fl = flagsOf(v), cust = custOf(v);
+  const canSetLoc = mgr && v.in && (!cust || !hasLoc(cust));
+  return `<article class="rep" id="v-${esc(v.id)}">
+    <div class="rep-photos">${photoBtn(v, 'in')}${photoBtn(v, 'out')}</div>
+    <div class="rep-body">
+      <div class="rep-head"><div><h3>${esc(v.customerName)}</h3>${v.customerAddress ? `<p class="meta">${esc(v.customerAddress)}</p>` : ''}</div>
+        <div style="display:grid;gap:4px;justify-items:end">${v.status === 'selesai' ? chip('Selesai', 'ok') : chip('Sedang berkunjung', 'go')}${locChip(v.in)}</div></div>
+      <dl class="kv">
+        ${mgr ? `<dt>Petugas</dt><dd><b>${esc(v.staffName)}</b></dd>` : ''}
+        <dt>Check-in</dt><dd>${ptLine(v.in)}</dd>
+        <dt>Check-out</dt><dd>${v.out ? ptLine(v.out) : '<span class="muted">Belum check-out</span>'}</dd>
+        <dt>Durasi</dt><dd>${fmtDur(dur)}${tout ? '' : ' <span class="muted">(berjalan)</span>'}</dd>
+        <dt>Keperluan</dt><dd>${esc(v.purpose || '–')}</dd>
+        ${v.note ? `<dt>Catatan</dt><dd>${esc(v.note)}</dd>` : ''}
+        ${v.out?.result ? `<dt>Hasil</dt><dd>${esc(v.out.result)}</dd>` : ''}
+      </dl>
+      ${fl.length ? `<ul class="flags">${fl.map(t => `<li>⚠ ${esc(t)}</li>`).join('')}</ul>` : ''}
+      ${mgr ? `<div class="acts">
+        ${canSetLoc ? `<button class="btn sm" data-act="setCustLoc" data-id="${esc(v.id)}">${ICON.pin}${cust ? 'Jadikan titik lokasi customer' : 'Simpan sebagai customer baru'}</button>` : ''}
+        <button class="btn sm bad" data-act="delVisit" data-id="${esc(v.id)}">Hapus</button></div>`
+      : (v.status !== 'selesai' ? `<div class="acts"><button class="btn primary sm" data-act="checkout" data-id="${esc(v.id)}">${ICON.exit}Check-out</button></div>` : '')}
+    </div></article>`;
+}
+
+/* ---------- views ---------- */
+const VIEWS = {
+  kunjungan() {
+    const act = S.active[0];
+    let top;
+    if (act) {
+      const tin = ptTime(act.in);
+      top = `<section class="live">
+        ${chip('Sedang berkunjung', 'go')}
+        <h2>${esc(act.customerName)}</h2>
+        ${act.customerAddress ? `<p>${esc(act.customerAddress)}</p>` : ''}
+        <p>Check-in ${fmtTime(tin)}${act.date !== today() ? ` (${esc(fmtDate(act.date))})` : ''}</p>
+        <div class="big">${fmtDur(Date.now() - tin)}</div>
+        <button class="btn primary cta" data-act="checkout" data-id="${esc(act.id)}">${ICON.exit}Check-out dari lokasi</button>
+      </section>`;
+    } else {
+      top = `<section class="cta-card">
+        <h2>Sudah tiba di lokasi?</h2>
+        <p>Check-in saat Anda sudah berada di lokasi customer. Posisi GPS, foto bukti, dan waktu akan tercatat otomatis.</p>
+        <button class="btn cta" data-act="checkin">${ICON.pin}Check-in di lokasi customer</button>
+      </section>`;
+    }
+    if (!S.visLoaded) return top + loadingBlock();
+    const mine = S.visits.filter(v => v.username === S.me && !S.active.some(a => a.id === v.id));
+    return top + (mine.length ? `<h2 class="sec-title">Kunjungan hari ini (${mine.length})</h2><div class="reps">${mine.map(v => visitCard(v, false)).join('')}</div>`
+      : `<p class="muted" style="text-align:center">${S.active.length ? '' : 'Belum ada kunjungan hari ini.'}</p>`);
+  },
+  riwayat() {
+    if (!S.visLoaded) return loadingBlock();
+    const mine = S.visits.filter(v => v.username === S.me);
+    const head = `<h2 class="sec-title" style="margin-top:0">${esc(fmtDate(S.date))}</h2>`;
+    if (!mine.length) return head + `<div class="empty"><h3>Tidak ada kunjungan</h3><p>Pilih tanggal lain untuk melihat riwayat kunjungan Anda.</p></div>`;
+    return head + `<div class="reps">${mine.map(v => visitCard(v, false)).join('')}</div>`;
+  },
+  akun() {
+    const n = me().name || '';
+    return `<div class="task"><div class="prof"><span class="avatar">${esc(initials(n))}</span><div><h3>${esc(n)}</h3><p class="loc">Username: ${esc(S.me)}<br>Petugas lapangan</p></div></div></div>
+      <div class="stack">${installBtn('mop')}
+        <button class="btn" data-act="pw">${ICON.key}Ganti password</button>
+        <button class="btn bad" data-act="logout">${ICON.out}Keluar dari aplikasi</button></div>
+      <p class="muted" style="font-size:13px;margin-top:18px">Tips: izinkan akses <b>Lokasi</b> dan <b>Kamera</b> untuk aplikasi ini, dan aktifkan GPS HP sebelum check-in.</p>`;
+  },
+  pantau() {
+    if (!S.visLoaded) return loadingBlock();
+    const vs = filteredVisits();
+    const cnt = f => vs.filter(f).length;
+    const stats = `<div class="stats">
+      <div class="stat"><b>${vs.length}</b><span>Total kunjungan</span></div>
+      <div class="stat wait"><b>${cnt(v => v.status !== 'selesai')}</b><span>Sedang berkunjung</span></div>
+      <div class="stat ok"><b>${cnt(v => v.status === 'selesai')}</b><span>Selesai</span></div>
+      <div class="stat bad"><b>${cnt(v => v.in?.inside === false)}</b><span>Di luar radius</span></div>
+      <div class="stat"><b>${new Set(vs.map(v => v.username)).size}</b><span>Petugas aktif</span></div></div>`;
+    if (!vs.length) return stats + `<div class="empty"><h3>Belum ada kunjungan</h3><p>Check-in petugas untuk ${esc(fmtDate(S.date))} akan muncul di sini dan di peta secara langsung.</p></div>`;
+    return stats + `<div class="reps">${vs.map(v => visitCard(v, true)).join('')}</div>`;
+  },
+  customer() {
+    if (!S.customers.length) return `<div class="empty"><h3>Belum ada customer</h3><p>Tambahkan customer beserta titik lokasinya agar sistem bisa memeriksa apakah petugas benar-benar check-in di lokasi.</p><button class="btn primary" data-act="custForm">${ICON.plus}Tambah customer</button></div>`;
+    return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Customer</th><th>Kontak</th><th>Titik lokasi</th><th>Radius</th><th>Status</th><th></th></tr></thead><tbody>
+      ${S.customers.map(c => `<tr>
+        <td><b>${esc(c.name)}</b>${c.address ? `<br><span class="muted">${esc(c.address)}</span>` : ''}</td>
+        <td>${esc(c.contact || '–')}</td>
+        <td>${hasLoc(c) ? `<a href="${gmaps(c.lat, c.lng)}" target="_blank" rel="noopener">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</a>` : chip('Belum diatur', 'idle')}</td>
+        <td>${c.radius || defRadius()} m</td>
+        <td>${c.active === false ? chip('Nonaktif', 'idle') : chip('Aktif', 'ok')}</td>
+        <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="custForm" data-id="${esc(c.id)}">Ubah</button></td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted" style="font-size:13px;margin-top:12px">Customer tanpa titik lokasi tetap bisa dikunjungi. Setelah petugas check-in di sana, tekan <b>Jadikan titik lokasi customer</b> pada kartu kunjungannya di menu Pemantauan.</p>`;
+  },
+  pengguna() {
+    const rows = Object.entries(S.accounts).sort((a, b) => (a[1].role === b[1].role ? a[1].name.localeCompare(b[1].name) : a[1].role === 'manager' ? -1 : 1));
+    return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nama</th><th>Username</th><th>Peran</th><th>Status</th><th></th></tr></thead><tbody>
+      ${rows.map(([u, a]) => `<tr><td><b>${esc(a.name)}</b>${u === S.me ? ' <span class="muted">(Anda)</span>' : ''}</td><td>${esc(u)}</td><td>${ROLE[a.role]}</td>
+        <td>${a.active === false ? chip('Nonaktif', 'idle') : chip('Aktif', 'ok')}</td>
+        <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="userForm" data-user="${esc(u)}">Ubah</button>
+        ${u !== S.me ? `<button class="btn sm" data-act="userToggle" data-user="${esc(u)}">${a.active === false ? 'Aktifkan' : 'Nonaktifkan'}</button> <button class="btn sm bad" data-act="userDel" data-user="${esc(u)}">Hapus</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  },
+  pengaturan() {
+    return `<div class="card" style="max-width:560px"><h3>Pengaturan umum</h3>
+      <form data-form="settings">
+        <div class="field"><label for="st-office">Nama perusahaan</label><input id="st-office" type="text" name="office" value="${esc(S.settings.officeName || '')}" required></div>
+        <div class="field"><label for="st-addr">Alamat kantor (opsional)</label><input id="st-addr" type="text" name="address" value="${esc(S.settings.address || '')}"></div>
+        <div class="field"><label for="st-rad">Radius absen default (meter)</label><input id="st-rad" type="text" inputmode="numeric" name="radius" value="${defRadius()}"><small>Check-in lebih jauh dari radius ini akan ditandai "Di luar radius". Bisa diatur berbeda per customer.</small></div>
+        <button class="btn primary" type="submit">Simpan</button>
+      </form></div>
+      <div class="card" style="max-width:560px;margin-top:14px"><h3>Tentang data lokasi</h3>
+      <p class="loc">Posisi petugas dicatat saat <b>check-in</b> dan <b>check-out</b>, lengkap dengan akurasi GPS dan jarak ke titik customer. Waktu yang dipakai adalah <b>waktu server</b>, sehingga tidak bisa diakali dengan mengubah jam HP. Foto bukti diberi cap waktu dan koordinat secara otomatis.</p></div>`;
+  }
+};
+const filteredVisits = () => S.visits.filter(v => !S.staffFilter || v.username === S.staffFilter);
+
+/* ---------- monitoring map ---------- */
+let MAP = null, MAPL = null, mapFit = true;
+const tiles = () => L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' });
+const pinIcon = (cls, txt) => L.divIcon({ className: '', html: `<div class="pin ${cls}"><b>${esc(txt)}</b></div>`, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -30] });
+function updateMap() {
+  if (S.tab !== 'pantau') return;
+  const el = $('#map'); if (!el) return;
+  if (!window.L) { $('#mapWrap').innerHTML = '<p class="muted" style="padding:14px;margin:0">Peta tidak dapat dimuat. Periksa koneksi internet.</p>'; return; }
+  if (!MAP || MAP.getContainer() !== el) { MAP = L.map(el).setView([-6.2, 106.82], 11); tiles().addTo(MAP); MAPL = L.layerGroup().addTo(MAP); }
+  MAPL.clearLayers();
+  const pts = [];
+  S.customers.filter(c => c.active !== false && hasLoc(c)).forEach(c => {
+    L.circle([c.lat, c.lng], { radius: c.radius || defRadius(), color: '#5B6B82', weight: 1.5, fillOpacity: .07 }).addTo(MAPL).bindTooltip(c.name);
+  });
+  filteredVisits().forEach(v => {
+    for (const k of ['in', 'out']) {
+      const p = v[k]; if (!p || typeof p.lat !== 'number') continue;
+      const cls = k === 'out' ? 'out' : v.status !== 'selesai' ? 'go' : p.inside === false ? 'bad' : p.inside === true ? 'ok' : 'unk';
+      L.marker([p.lat, p.lng], { icon: pinIcon(cls, initials(v.staffName)) }).addTo(MAPL)
+        .bindPopup(`<b>${esc(v.customerName)}</b><br>${esc(v.staffName)}<br>${k === 'in' ? 'Check-in' : 'Check-out'} ${fmtTimeS(ptTime(p))}<br>Akurasi ±${p.acc} m${p.dist != null ? `, ${fmtDist(p.dist)} dari customer` : ''}<br><a href="#" data-act="goto" data-id="${esc(v.id)}">Lihat detail</a>`);
+      pts.push([p.lat, p.lng]);
+    }
+  });
+  if (mapFit && pts.length) { MAP.fitBounds(pts, { padding: [40, 40], maxZoom: 16 }); mapFit = false; }
+  setTimeout(() => MAP && MAP.invalidateSize(), 60);
+}
+
+/* ---------- modal ---------- */
+let MODALMAP = null;
+function openModal(html, wide) {
+  const m = $('#modal');
+  m.innerHTML = `<div class="backdrop" data-act="close"></div><div class="sheet${wide ? ' wide' : ''}" role="dialog" aria-modal="true">${html}</div>`;
+  m.classList.add('open'); m.setAttribute('aria-hidden', 'false');
+}
+function closeModal() {
+  if (G && G.stop) G.stop(); G = null;
+  if (MODALMAP) { try { MODALMAP.remove(); } catch (e) {} MODALMAP = null; }
+  const m = $('#modal'); m.classList.remove('open'); m.setAttribute('aria-hidden', 'true'); m.innerHTML = '';
+}
+const sheetHead = t => `<div class="sheet-h"><h2>${esc(t)}</h2><button class="btn ghost sm" type="button" data-act="close" aria-label="Tutup">✕</button></div>`;
+const step = (n, title, body) => `<div class="step"><div class="step-n">${n}</div><div><h3>${title}</h3>${body}</div></div>`;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('#printRoot').hidden) closePrint(); else if ($('#modal').classList.contains('open')) closeModal(); } });
+
+/* ---------- GPS ---------- */
+function acquireGPS(onUpdate) {
+  if (!navigator.geolocation) { onUpdate({ error: 'Perangkat atau browser ini tidak mendukung GPS.' }); return () => {}; }
+  let best = null, done = false; const t0 = Date.now();
+  const finish = () => { if (done) return; done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm); if (best) onUpdate({ fix: best, done: true }); };
+  const id = navigator.geolocation.watchPosition(p => {
+    const c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.max(1, Math.round(p.coords.accuracy)), at: new Date(p.timestamp).toISOString() };
+    if (!best || c.acc <= best.acc) best = c;
+    if (best.acc <= 20 || Date.now() - t0 > 20000) finish(); else onUpdate({ fix: best, done: false });
+  }, e => {
+    if (best) return finish();
+    done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm);
+    onUpdate({ error: e.code === 1 ? 'Izin lokasi ditolak. Buka pengaturan Chrome atau aplikasi, izinkan Lokasi, lalu tekan Coba lagi.' : e.code === 3 ? 'Sinyal GPS belum didapat. Pindah ke area lebih terbuka atau dekat jendela, lalu tekan Coba lagi.' : 'Lokasi tidak dapat dibaca. Pastikan GPS (Lokasi) di HP aktif.' });
+  }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+  const tm = setTimeout(finish, 22000);
+  return () => { done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm); };
+}
+
+/* ---------- photos ---------- */
+async function toCanvas(file, max, lines) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Foto tidak bisa dibaca. Coba ambil ulang.')); i.src = url; });
+    const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0, c.width, c.height);
+    if (lines && lines.length) {
+      const fs = Math.max(11, Math.round(c.width / 38)), lh = fs * 1.45, h = lh * lines.length + fs * .9;
+      g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, c.height - h, c.width, h);
+      g.fillStyle = '#fff'; g.textBaseline = 'top';
+      lines.forEach((t, i) => { g.font = `${i ? 600 : 800} ${fs}px Manrope, Arial, sans-serif`; g.fillText(t, fs * .6, c.height - h + fs * .45 + i * lh, c.width - fs * 1.2); });
+    }
+    return c;
+  } finally { URL.revokeObjectURL(url); }
+}
+async function storePhoto(file, lines) {
+  let max = 1100, q = 0.68, d = '';
+  for (let i = 0; i < 6; i++) { const c = await toCanvas(file, max, lines); d = c.toDataURL('image/jpeg', q); if (d.length < 180000) return d; max = Math.round(max * 0.82); q = Math.max(0.4, q - 0.05); }
+  return d;
+}
+function slotHTML(src) {
+  if (!src) return `<label class="cam"><input type="file" accept="image/*" capture="environment" data-ph="1" class="sr">${ICON.cam}<span>Ambil foto di lokasi</span><small>Foto tampak depan lokasi, papan nama, atau pekerjaan</small></label>
+    <label class="gal"><input type="file" accept="image/*" data-ph="1" class="sr">atau pilih dari galeri</label>`;
+  return `<div class="shot"><img src="${esc(src)}" alt="Foto bukti"><span class="shot-ok">✓ Foto siap</span></div>
+    <div class="shot-acts"><label class="btn"><input type="file" accept="image/*" capture="environment" data-ph="1" class="sr">${ICON.cam}Foto ulang</label><label class="btn"><input type="file" accept="image/*" data-ph="1" class="sr">Dari galeri</label></div>`;
+}
+
+/* ---------- check-in / check-out ---------- */
+let G = null;
+function selCust() {
+  if (!G) return null;
+  if (G.mode === 'out') return custOf(G.v);
+  const id = $('#ck-cust')?.value; return id && id !== '__new' ? S.customers.find(c => c.id === id) : null;
+}
+function openCheck(mode, id) {
+  if (mode === 'in' && S.active.length) { toast('Selesaikan check-out kunjungan sebelumnya terlebih dulu.', 'bad'); return; }
+  const v = mode === 'out' ? (S.active.find(x => x.id === id) || S.visits.find(x => x.id === id)) : null;
+  if (mode === 'out' && !v) return;
+  closeModal();
+  G = { mode, v, fix: null, err: null, done: false, photo: null, stop: null };
+  const custs = S.customers.filter(c => c.active !== false);
+  const gpsStep = `<div id="gpsBox"></div><div id="miniMap" class="minimap"></div>`;
+  const body = mode === 'in'
+    ? step(1, 'Pilih customer', `<select id="ck-cust" name="cust" data-change="ckcust"><option value="">Pilih customer…</option>${custs.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}<option value="__new">+ Customer belum terdaftar</option></select>
+        <div id="ck-new" hidden style="margin-top:10px"><div class="field"><label for="ck-nn">Nama customer</label><input id="ck-nn" type="text" name="newName"></div><div class="field" style="margin:0"><label for="ck-na">Alamat (opsional)</label><input id="ck-na" type="text" name="newAddr"></div></div>`)
+      + step(2, 'Lokasi GPS Anda', gpsStep)
+      + step(3, 'Foto bukti di lokasi', `<div id="slot">${slotHTML(null)}</div>`)
+      + step(4, 'Keperluan', `<select name="purpose">${PURPOSES.map(p => `<option>${p}</option>`).join('')}</select><textarea name="note" style="margin-top:10px" placeholder="Catatan (opsional), contoh: bertemu Pak Andi, bagian gudang"></textarea>`)
+    : `<div class="gps" style="margin-bottom:18px"><b style="font-size:16px">${esc(v.customerName)}</b><span class="muted">Check-in ${fmtTime(ptTime(v.in))}, sudah ${fmtDur(Date.now() - ptTime(v.in))}</span></div>`
+      + step(1, 'Lokasi GPS Anda', gpsStep)
+      + step(2, 'Foto saat selesai (opsional)', `<div id="slot">${slotHTML(null)}</div>`)
+      + step(3, 'Hasil kunjungan', `<textarea name="result" required placeholder="Contoh: unit sudah diperbaiki dan dites, customer tanda tangan berita acara"></textarea>`);
+  openModal(`${sheetHead(mode === 'in' ? 'Check-in kunjungan' : 'Check-out kunjungan')}
+    <form data-form="check"><div class="sheet-b">${body}
+      <p class="muted" style="font-size:12.5px;margin:0">Waktu dicatat dari server. Foto diberi cap waktu, koordinat, dan nama Anda secara otomatis.</p></div>
+    <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit" id="ck-submit">${mode === 'in' ? 'Check-in sekarang' : 'Check-out sekarang'}</button></div></form>`);
+  startGPS(); setTimeout(initMini, 60);
+}
+function startGPS() {
+  if (!G) return; if (G.stop) G.stop();
+  G.err = null; G.done = false; renderGPS();
+  G.stop = acquireGPS(r => { if (!G) return; if (r.error) { G.err = r.error; G.done = true; } else { G.fix = r.fix; G.done = r.done; G.err = null; } renderGPS(); });
+}
+function renderGPS() {
+  const box = $('#gpsBox'); if (!box || !G) return;
+  const c = selCust(), f = G.fix;
+  if (!f && G.err) box.innerHTML = `<div class="gps bad"><b>Lokasi belum didapat</b><span>${esc(G.err)}</span><span><button type="button" class="btn sm" data-act="regps">Coba lagi</button></span></div>`;
+  else if (!f) box.innerHTML = `<div class="gps"><span class="row"><span class="spin sm"></span><b>Mencari lokasi GPS…</b></span><span class="muted" style="font-size:13px">Pastikan GPS HP aktif. Jika muncul permintaan izin lokasi, pilih Izinkan.</span></div>`;
+  else {
+    let d = '';
+    if (c && hasLoc(c)) { const dist = haversine(f, c), r = c.radius || defRadius(); d = `<span class="row">Jarak ke ${esc(c.name)}: <b>${fmtDist(dist)}</b> ${dist <= r ? chip('Di lokasi', 'ok') : chip(`Di luar radius ${r} m`, 'bad')}</span>`; }
+    else if (c) d = `<span class="muted" style="font-size:13px">Titik lokasi ${esc(c.name)} belum diatur manager. Posisi Anda tetap dicatat.</span>`;
+    box.innerHTML = `<div class="gps"><span class="co">${f.lat.toFixed(6)}, ${f.lng.toFixed(6)}</span>
+      <span class="row">Akurasi ±${f.acc} m ${f.acc <= 30 ? chip('Baik', 'ok') : f.acc <= 100 ? chip('Cukup', 'go') : chip('Rendah', 'bad')}</span>${d}
+      <span class="row" style="font-size:13px">${G.done ? '' : '<span class="spin sm"></span><span class="muted">Menyempurnakan akurasi…</span>'}<button type="button" class="linkbtn" data-act="regps">Perbarui lokasi</button></span></div>`;
+  }
+  updateMini();
+}
+function initMini() {
+  const el = $('#miniMap'); if (!el || !G) return;
+  if (!window.L) { el.hidden = true; return; }
+  MODALMAP = L.map(el, { zoomControl: false }).setView([-6.2, 106.82], 12); tiles().addTo(MODALMAP);
+  G.layer = L.layerGroup().addTo(MODALMAP); updateMini();
+}
+function updateMini() {
+  if (!G || !MODALMAP || !G.layer) return;
+  G.layer.clearLayers(); const pts = []; const c = selCust(), f = G.fix;
+  if (c && hasLoc(c)) { L.circle([c.lat, c.lng], { radius: c.radius || defRadius(), color: '#1D3F8F', weight: 1.5, fillOpacity: .12 }).addTo(G.layer); L.marker([c.lat, c.lng], { icon: pinIcon('unk', '') }).addTo(G.layer).bindTooltip(c.name); pts.push([c.lat, c.lng]); }
+  if (f) { L.circle([f.lat, f.lng], { radius: f.acc, color: '#D97706', weight: 1, fillOpacity: .15 }).addTo(G.layer); L.marker([f.lat, f.lng], { icon: pinIcon('go', 'ANDA') }).addTo(G.layer); pts.push([f.lat, f.lng]); }
+  if (pts.length === 1) MODALMAP.setView(pts[0], 17); else if (pts.length > 1) MODALMAP.fitBounds(pts, { padding: [30, 30], maxZoom: 18 });
+  MODALMAP.invalidateSize();
+}
+async function saveSoon(p) {
+  const r = await Promise.race([p.then(() => 'ok'), new Promise(res => setTimeout(() => res('queued'), 10000))]);
+  if (r === 'queued') { p.catch(e => toast('Gagal mengirim: ' + errMsg(e), 'bad')); return false; }
+  return true;
+}
+
+/* ---------- change events ---------- */
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.ph && G) {
+    const f = t.files && t.files[0]; if (!f) return;
+    if (f.type && !/^image\//.test(f.type)) { toast('File harus berupa foto.', 'bad'); return; }
+    G.photo = f; $('#slot').innerHTML = slotHTML(URL.createObjectURL(f));
+  }
+  if (t.dataset.change === 'ckcust') { $('#ck-new').hidden = t.value !== '__new'; renderGPS(); }
+  if (t.dataset.change === 'date') { setDate(t.value || today()); t.blur(); }
+  if (t.dataset.change === 'staff') { S.staffFilter = t.value; mapFit = true; t.blur(); renderContent(); updateMap(); }
+});
+document.addEventListener('input', e => {
+  if (e.target.name === 'coord' && MODALMAP && CM) { const p = parseCoord(e.target.value); if (p) setCustPin(p, false); }
+});
+
+/* ---------- customer form map ---------- */
+let CM = null;
+function setCustPin(p, writeInput) {
+  if (!MODALMAP) return;
+  if (CM.marker) CM.marker.setLatLng([p.lat, p.lng]); else CM.marker = L.marker([p.lat, p.lng], { icon: pinIcon('unk', '') }).addTo(MODALMAP);
+  const r = +($('#c-rad')?.value) || defRadius();
+  if (CM.circle) CM.circle.setLatLng([p.lat, p.lng]).setRadius(r); else CM.circle = L.circle([p.lat, p.lng], { radius: r, color: '#1D3F8F', weight: 1.5, fillOpacity: .12 }).addTo(MODALMAP);
+  MODALMAP.setView([p.lat, p.lng], Math.max(MODALMAP.getZoom(), 16));
+  if (writeInput) $('#c-coord').value = `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`;
+}
+
+/* ---------- forms ---------- */
+const activeManagers = () => Object.values(S.accounts).filter(a => a.role === 'manager' && a.active !== false);
+function busy(f, on, label) { f.querySelectorAll('button[type=submit]').forEach(b => { b.disabled = on; if (label && on) { b.dataset.l = b.textContent; b.textContent = label; } else if (!on && b.dataset.l) b.textContent = b.dataset.l; }); }
+const FORMS = {
+  async setup(f) {
+    const v = Object.fromEntries(new FormData(f)); const u = v.username.trim().toLowerCase();
+    if (!/^[a-z0-9._]{3,30}$/.test(u)) return toast('Username hanya huruf kecil, angka, titik, garis bawah (3–30 karakter).', 'bad');
+    if (v.pw.length < 6) return toast('Password minimal 6 karakter.', 'bad');
+    if (v.pw !== v.pw2) return toast('Kedua password tidak sama.', 'bad');
+    busy(f, true);
+    try {
+      await S.db.doc(C.set).set({ officeName: v.office.trim(), address: '', radius: 150 });
+      await S.db.doc(C.acc + '/' + u).set({ name: v.name.trim(), role: 'manager', pass: await hashPw(u, v.pw), active: true });
+      S.me = u; ss('fv-user', u); toast('Akun manager dibuat.');
+    } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+  },
+  async login(f) {
+    const v = Object.fromEntries(new FormData(f)); const u = v.username.trim().toLowerCase(), a = S.accounts[u];
+    if (!a || a.pass !== await hashPw(u, v.pw)) return toast('Username atau password salah.', 'bad');
+    if (a.active === false) return toast('Akun ini dinonaktifkan. Hubungi manager.', 'bad');
+    S.me = u; ss('fv-user', u); S.tab = null; route();
+  },
+  async check(f) {
+    if (!G) return;
+    const fd = new FormData(f), now = new Date(), fx = G.fix;
+    if (!fx) return toast('Lokasi GPS belum didapat. Tunggu sebentar atau tekan Perbarui lokasi.', 'bad');
+    if (G.mode === 'in') {
+      const cid = fd.get('cust'); if (!cid) return toast('Pilih customer terlebih dulu.', 'bad');
+      let cust = null, name, addr;
+      if (cid === '__new') { name = (fd.get('newName') || '').trim(); addr = (fd.get('newAddr') || '').trim(); if (!name) return toast('Isi nama customer.', 'bad'); }
+      else { cust = S.customers.find(c => c.id === cid); name = cust.name; addr = cust.address || ''; }
+      if (!G.photo) return toast('Foto bukti di lokasi wajib diambil.', 'bad');
+      const r = cust && hasLoc(cust) ? (cust.radius || defRadius()) : null;
+      const dist = r != null ? Math.round(haversine(fx, cust)) : null;
+      busy(f, true, 'Memproses foto…');
+      try {
+        const photo = await storePhoto(G.photo, [`CHECK-IN  ${name}`, `${fmtStamp(now)}  |  ${fx.lat.toFixed(6)}, ${fx.lng.toFixed(6)} ±${fx.acc}m  |  ${me().name}`]);
+        busy(f, true, 'Mengirim…');
+        const ref = S.db.collection(C.vis).doc();
+        const ok = await saveSoon(ref.set({
+          date: dstr(now), username: S.me, staffName: me().name, customerId: cust ? cust.id : null, customerName: name, customerAddress: addr,
+          purpose: fd.get('purpose') || '', note: (fd.get('note') || '').trim(), status: 'berlangsung',
+          in: { device: now.toISOString(), server: SERVER(), lat: fx.lat, lng: fx.lng, acc: fx.acc, gpsAt: fx.at, dist, radius: r, inside: r == null ? null : dist <= r, photo },
+          out: null
+        }));
+        closeModal(); toast(ok ? `Check-in di ${name} tercatat.` : 'Sinyal lemah: check-in tersimpan di HP dan terkirim otomatis saat ada sinyal.');
+      } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+    } else {
+      const result = (fd.get('result') || '').trim(); if (!result) return toast('Isi hasil kunjungan.', 'bad');
+      const v = G.v, cust = custOf(v);
+      const r = cust && hasLoc(cust) ? (cust.radius || defRadius()) : null;
+      const dist = r != null ? Math.round(haversine(fx, cust)) : null;
+      busy(f, true, G.photo ? 'Memproses foto…' : 'Mengirim…');
+      try {
+        const photo = G.photo ? await storePhoto(G.photo, [`CHECK-OUT  ${v.customerName}`, `${fmtStamp(now)}  |  ${fx.lat.toFixed(6)}, ${fx.lng.toFixed(6)} ±${fx.acc}m  |  ${me().name}`]) : null;
+        const ok = await saveSoon(S.db.doc(C.vis + '/' + v.id).update({ status: 'selesai',
+          out: { device: now.toISOString(), server: SERVER(), lat: fx.lat, lng: fx.lng, acc: fx.acc, gpsAt: fx.at, dist, radius: r, inside: r == null ? null : dist <= r, photo, result } }));
+        closeModal(); toast(ok ? 'Check-out tercatat. Terima kasih!' : 'Sinyal lemah: check-out tersimpan di HP dan terkirim otomatis saat ada sinyal.');
+      } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+    }
+  },
+  async cust(f) {
+    const v = Object.fromEntries(new FormData(f)); const id = f.dataset.id;
+    const p = v.coord.trim() ? parseCoord(v.coord) : null;
+    if (v.coord.trim() && !p) return toast('Format koordinat salah. Contoh: -6.200000, 106.816666', 'bad');
+    const rad = v.radius.trim() ? Math.round(+v.radius) : null;
+    if (rad != null && !(rad >= 10 && rad <= 5000)) return toast('Radius harus antara 10 dan 5000 meter.', 'bad');
+    busy(f, true);
+    try {
+      const ref = id ? S.db.doc(C.cust + '/' + id) : S.db.collection(C.cust).doc();
+      const old = id ? S.customers.find(c => c.id === id) : null;
+      await ref.set({ name: v.name.trim(), address: v.address.trim(), contact: v.contact.trim(), lat: p ? p.lat : null, lng: p ? p.lng : null, radius: rad, active: v.active !== 'off', createdAt: old?.createdAt || new Date().toISOString() });
+      closeModal(); toast(id ? 'Customer diperbarui.' : 'Customer ditambahkan.');
+    } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+  },
+  async user(f) {
+    const v = Object.fromEntries(new FormData(f)); const edit = f.dataset.user; const u = edit || v.username.trim().toLowerCase();
+    if (!edit) {
+      if (!/^[a-z0-9._]{3,30}$/.test(u)) return toast('Username hanya huruf kecil, angka, titik, garis bawah (3–30 karakter).', 'bad');
+      if (S.accounts[u]) return toast('Username sudah dipakai.', 'bad');
+      if ((v.pw || '').length < 6) return toast('Password minimal 6 karakter.', 'bad');
+    } else if (v.pw && v.pw.length < 6) return toast('Password baru minimal 6 karakter.', 'bad');
+    if (edit && S.accounts[edit].role === 'manager' && v.role !== 'manager' && activeManagers().length <= 1) return toast('Harus ada minimal satu manager aktif.', 'bad');
+    busy(f, true);
+    try {
+      if (edit) { const patch = { name: v.name.trim(), role: v.role }; if (v.pw) patch.pass = await hashPw(u, v.pw); await S.db.doc(C.acc + '/' + u).update(patch); }
+      else await S.db.doc(C.acc + '/' + u).set({ name: v.name.trim(), role: v.role, pass: await hashPw(u, v.pw), active: true });
+      closeModal(); toast(edit ? 'Pengguna diperbarui.' : `Akun ${u} dibuat.`);
+    } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+  },
+  async pw(f) {
+    const v = Object.fromEntries(new FormData(f));
+    if (me().pass !== await hashPw(S.me, v.old)) return toast('Password lama salah.', 'bad');
+    if (v.pw.length < 6) return toast('Password baru minimal 6 karakter.', 'bad');
+    if (v.pw !== v.pw2) return toast('Kedua password baru tidak sama.', 'bad');
+    busy(f, true);
+    try { await S.db.doc(C.acc + '/' + S.me).update({ pass: await hashPw(S.me, v.pw) }); closeModal(); toast('Password diganti.'); }
+    catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+  },
+  async settings(f) {
+    const v = Object.fromEntries(new FormData(f)); const r = Math.round(+v.radius);
+    if (!(r >= 10 && r <= 5000)) return toast('Radius harus antara 10 dan 5000 meter.', 'bad');
+    busy(f, true);
+    try { await S.db.doc(C.set).set({ ...S.settings, officeName: v.office.trim(), address: v.address.trim(), radius: r }); toast('Pengaturan disimpan.'); }
+    catch (e) { toast(errMsg(e), 'bad'); }
+    busy(f, false);
+  },
+  async delUser(f) {
+    const u = f.dataset.user, a = S.accounts[u]; if (!a) return closeModal();
+    if (u === S.me) return toast('Tidak bisa menghapus akun sendiri.', 'bad');
+    if (a.role === 'manager' && a.active !== false && activeManagers().length <= 1) return toast('Harus ada minimal satu manager aktif.', 'bad');
+    busy(f, true);
+    try { await S.db.doc(C.acc + '/' + u).delete(); closeModal(); toast(`Akun ${a.name} dihapus.`); }
+    catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+  },
+  async delVisit(f) {
+    busy(f, true);
+    try { await S.db.doc(C.vis + '/' + f.dataset.id).delete(); closeModal(); toast('Kunjungan dihapus.'); }
+    catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+  }
+};
+document.addEventListener('submit', e => { const f = e.target; if (!f.dataset.form) return; e.preventDefault(); FORMS[f.dataset.form]?.(f); });
+
+/* ---------- actions ---------- */
+const ACT = {
+  tab: d => setTab(d.tab),
+  close: () => closeModal(),
+  logout: () => { if (S.unsubAct) { S.unsubAct(); S.unsubAct = null; } S.active = []; S.me = null; ss('fv-user', null); S.tab = null; route(); },
+  checkin: () => openCheck('in'),
+  checkout: d => openCheck('out', d.id),
+  regps: () => startGPS(),
+  async install() { if (!installEvt) return toast('Buka menu ⋮ di Chrome, lalu pilih "Instal aplikasi" atau "Tambahkan ke layar utama".'); installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; },
+  goto: d => { MAP && MAP.closePopup(); const el = document.getElementById('v-' + d.id); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.animate([{ outline: '3px solid var(--mop)' }, { outline: '3px solid transparent' }], { duration: 1600 }); } },
+  zoom: d => {
+    const v = S.visits.find(x => x.id === d.id) || S.active.find(x => x.id === d.id); if (!v) return; const p = v[d.k];
+    openModal(`${sheetHead(`${v.customerName}, foto ${d.k === 'in' ? 'check-in' : 'check-out'}`)}<div class="sheet-b"><img src="${esc(p.photo)}" alt="Foto ${esc(v.customerName)}" style="width:100%;border-radius:10px;display:block"><p class="muted">${esc(v.staffName)}, ${fmtTimeS(ptTime(p))}, ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)} (±${p.acc} m) <a href="${gmaps(p.lat, p.lng)}" target="_blank" rel="noopener">Buka di Google Maps</a></p></div>`, true);
+  },
+  pw: () => openModal(`${sheetHead('Ganti password')}<form data-form="pw"><div class="sheet-b">
+      <div class="field"><label for="p-old">Password lama</label><input id="p-old" type="password" name="old" required></div>
+      <div class="field"><label for="p-new">Password baru</label><input id="p-new" type="password" name="pw" minlength="6" required></div>
+      <div class="field"><label for="p-new2">Ulangi password baru</label><input id="p-new2" type="password" name="pw2" minlength="6" required></div>
+    </div><div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit">Ganti password</button></div></form>`),
+  custForm: d => {
+    const c = d.id ? S.customers.find(x => x.id === d.id) : null;
+    openModal(`${sheetHead(c ? 'Ubah customer' : 'Tambah customer')}<form data-form="cust" ${c ? `data-id="${esc(c.id)}"` : ''}><div class="sheet-b">
+      <div class="field"><label for="c-name">Nama customer</label><input id="c-name" type="text" name="name" value="${esc(c?.name || '')}" required></div>
+      <div class="field"><label for="c-addr">Alamat</label><input id="c-addr" type="text" name="address" value="${esc(c?.address || '')}"></div>
+      <div class="field"><label for="c-ct">Kontak (PIC dan nomor telepon)</label><input id="c-ct" type="text" name="contact" value="${esc(c?.contact || '')}"></div>
+      <div class="field"><label for="c-coord">Titik lokasi (latitude, longitude)</label><input id="c-coord" type="text" name="coord" value="${hasLoc(c) ? `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}` : ''}" placeholder="-6.200000, 106.816666">
+        <span class="coord-help">Klik titik di peta, tekan "Pakai lokasi saya" saat berada di lokasi, atau tempel koordinat dari Google Maps (klik kanan titik di Google Maps, lalu klik angka koordinatnya untuk menyalin).</span>
+        <div id="custMap" class="minimap" style="height:260px"></div>
+        <span><button type="button" class="btn sm" data-act="custHere">${ICON.pin}Pakai lokasi saya</button></span></div>
+      <div class="field"><label for="c-rad">Radius absen (meter)</label><input id="c-rad" type="text" inputmode="numeric" name="radius" value="${c?.radius || ''}" placeholder="Default ${defRadius()}"><small>Gedung besar atau kawasan pabrik sebaiknya diberi radius lebih besar.</small></div>
+      <div class="field"><label for="c-act">Status</label><select id="c-act" name="active"><option value="on">Aktif</option><option value="off" ${c?.active === false ? 'selected' : ''}>Nonaktif</option></select></div>
+    </div><div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit">${c ? 'Simpan perubahan' : 'Tambah customer'}</button></div></form>`);
+    setTimeout(() => {
+      const el = $('#custMap'); if (!el || !window.L) { if (el) el.hidden = true; return; }
+      MODALMAP = L.map(el).setView([-6.2, 106.82], 11); tiles().addTo(MODALMAP); CM = {};
+      MODALMAP.on('click', e => setCustPin({ lat: e.latlng.lat, lng: e.latlng.lng }, true));
+      if (hasLoc(c)) setCustPin(c, false);
+    }, 60);
+  },
+  custHere: (d, b) => {
+    if (!navigator.geolocation) return toast('GPS tidak didukung di perangkat ini.', 'bad');
+    b.disabled = true; b.textContent = 'Mencari lokasi…';
+    navigator.geolocation.getCurrentPosition(p => { b.disabled = false; b.innerHTML = `${ICON.pin}Pakai lokasi saya`; setCustPin({ lat: p.coords.latitude, lng: p.coords.longitude }, true); toast(`Lokasi didapat (akurasi ±${Math.round(p.coords.accuracy)} m).`); },
+      () => { b.disabled = false; b.innerHTML = `${ICON.pin}Pakai lokasi saya`; toast('Lokasi tidak didapat. Izinkan akses lokasi lalu coba lagi.', 'bad'); }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  },
+  async setCustLoc(d, b) {
+    const v = S.visits.find(x => x.id === d.id); if (!v) return; const p = v.in, cust = custOf(v);
+    b.disabled = true;
+    try {
+      if (cust) await S.db.doc(C.cust + '/' + cust.id).update({ lat: p.lat, lng: p.lng });
+      else { const ref = S.db.collection(C.cust).doc(); await ref.set({ name: v.customerName, address: v.customerAddress || '', contact: '', lat: p.lat, lng: p.lng, radius: null, active: true, createdAt: new Date().toISOString() }); await S.db.doc(C.vis + '/' + v.id).update({ customerId: ref.id }); }
+      toast(`Titik lokasi ${v.customerName} disimpan. Check-in berikutnya akan diperiksa radiusnya.`);
+    } catch (e) { toast(errMsg(e), 'bad'); b.disabled = false; }
+  },
+  delVisit: d => {
+    const v = S.visits.find(x => x.id === d.id); if (!v) return;
+    openModal(`${sheetHead('Hapus kunjungan?')}<form data-form="delVisit" data-id="${esc(v.id)}"><div class="sheet-b"><p style="margin-top:0">Kunjungan <b>${esc(v.staffName)}</b> ke <b>${esc(v.customerName)}</b> pada ${fmtTime(ptTime(v.in))} akan dihapus permanen beserta fotonya.</p></div>
+      <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn bad" type="submit">Hapus</button></div></form>`);
+  },
+  userForm: d => {
+    const u = d.user, a = u ? S.accounts[u] : null;
+    openModal(`${sheetHead(a ? 'Ubah pengguna' : 'Tambah pengguna')}<form data-form="user" ${u ? `data-user="${esc(u)}"` : ''} autocomplete="off"><div class="sheet-b">
+      <div class="field"><label for="u-name">Nama lengkap</label><input id="u-name" type="text" name="name" value="${esc(a?.name || '')}" required></div>
+      <div class="field"><label for="u-user">Username</label><input id="u-user" type="text" name="username" value="${esc(u || '')}" autocapitalize="none" ${u ? 'disabled' : 'required'}></div>
+      <div class="field"><label for="u-role">Peran</label><select id="u-role" name="role"><option value="staff">Petugas lapangan</option><option value="manager" ${a?.role === 'manager' ? 'selected' : ''}>Manager</option></select></div>
+      <div class="field"><label for="u-pw">${a ? 'Password baru (kosongkan jika tidak diganti)' : 'Password'}</label><input id="u-pw" type="password" name="pw" autocomplete="new-password" ${a ? '' : 'required minlength="6"'}></div>
+    </div><div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit">${a ? 'Simpan perubahan' : 'Buat akun'}</button></div></form>`);
+  },
+  async userToggle(d) {
+    const a = S.accounts[d.user]; if (!a) return;
+    if (a.active !== false && a.role === 'manager' && activeManagers().length <= 1) return toast('Harus ada minimal satu manager aktif.', 'bad');
+    try { await S.db.doc(C.acc + '/' + d.user).update({ active: a.active === false }); } catch (e) { toast(errMsg(e), 'bad'); }
+  },
+  userDel: d => {
+    const a = S.accounts[d.user]; if (!a) return;
+    openModal(`${sheetHead('Hapus pengguna?')}<form data-form="delUser" data-user="${esc(d.user)}"><div class="sheet-b"><p style="margin-top:0">Akun <b>${esc(a.name)}</b> (${esc(d.user)}) akan dihapus permanen dan tidak bisa login lagi.</p><p class="muted" style="font-size:13.5px">Riwayat kunjungan yang sudah tercatat tetap tersimpan dengan nama petugas ini. Jika hanya ingin menghentikan sementara, gunakan <b>Nonaktifkan</b>.</p></div>
+      <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn bad" type="submit">Hapus permanen</button></div></form>`);
+  },
+  csv: () => exportCSV(),
+  print: () => openPrint(),
+  closePrint: () => closePrint(),
+  doPrint: () => { try { window.print(); } catch (e) { toast('Gunakan tombol Unduh lalu cetak dari browser.', 'bad'); } },
+  dlReport: () => { download(`laporan-kunjungan-${S.date}.html`, `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Laporan kunjungan ${S.date}</title><style>body{margin:0;background:#fff}.page{max-width:900px;margin:24px auto;padding:0 20px}@media print{@page{size:A4;margin:12mm}.page{margin:0;padding:0;max-width:none}}${RPT_CSS}</style></head><body><div class="page">${reportHTML()}</div></body></html>`, 'text/html'); }
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
+  if (b.tagName === 'LABEL') return;
+  if (b.tagName === 'A') e.preventDefault();
+  ACT[b.dataset.act]?.(b.dataset, b);
+});
+
+/* ---------- report & export ---------- */
+function reportVisits() { return (isMgr() ? filteredVisits() : S.visits.filter(v => v.username === S.me)).slice().sort((a, b) => (ptTime(a.in) || 0) - (ptTime(b.in) || 0)); }
+function reportHTML() {
+  const vs = reportVisits(), staff = isMgr() ? S.staffFilter : S.me;
+  const done = vs.filter(v => v.status === 'selesai'), out = vs.filter(v => v.in?.inside === false);
+  const ptCell = p => p ? `${fmtTimeS(ptTime(p))}<br><a href="${gmaps(p.lat, p.lng)}">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</a><br>±${p.acc} m${p.dist != null ? `, ${fmtDist(p.dist)}` : ''}` : '–';
+  return `<div class="rpt">
+    <div class="rpt-h"><div><h1>Laporan Kunjungan Lapangan</h1><p>${esc(S.settings.officeName || '')}${S.settings.address ? '<br>' + esc(S.settings.address) : ''}</p></div>
+      <div class="rpt-meta"><b>Tanggal</b><span>${esc(fmtDate(S.date))}</span><b>Petugas</b><span>${staff ? esc(nameOf(staff)) : 'Semua petugas'}</span><b>Dicetak</b><span>${esc(fmtStamp(new Date()))}</span></div></div>
+    <div class="rpt-sum"><div><b>${vs.length}</b><span>Total kunjungan</span></div><div><b>${done.length}</b><span>Selesai (check-out)</span></div><div><b>${vs.length - done.length}</b><span>Belum check-out</span></div><div><b>${out.length}</b><span>Check-in di luar radius</span></div></div>
+    <h2>Rincian kunjungan</h2>
+    ${vs.length ? `<table><thead><tr><th>No</th><th>Customer</th>${staff ? '' : '<th>Petugas</th>'}<th>Check-in</th><th>Check-out</th><th>Durasi</th><th>Status lokasi</th><th>Keperluan / hasil</th></tr></thead><tbody>
+      ${vs.map((v, i) => { const ti = ptTime(v.in), to = v.out ? ptTime(v.out) : null; return `<tr><td>${i + 1}</td><td><b>${esc(v.customerName)}</b>${v.customerAddress ? '<br>' + esc(v.customerAddress) : ''}</td>${staff ? '' : `<td>${esc(v.staffName)}</td>`}
+        <td>${ptCell(v.in)}</td><td>${ptCell(v.out)}</td><td>${to ? fmtDur(to - ti) : '–'}</td>
+        <td class="${v.in.inside === false ? 'bad' : v.in.inside ? 'ok' : ''}">${v.in.inside === false ? 'Di luar radius' : v.in.inside ? 'Di lokasi' : 'Titik customer belum ada'}</td>
+        <td>${esc(v.purpose || '')}${v.note ? '<br>Catatan: ' + esc(v.note) : ''}${v.out?.result ? '<br>Hasil: ' + esc(v.out.result) : ''}</td></tr>`; }).join('')}</tbody></table>` : '<p>Tidak ada kunjungan pada tanggal ini.</p>'}
+    ${vs.length ? `<h2>Foto bukti</h2><div class="rpt-photos">${vs.map(v => `<figure><div class="pair">
+        <div>${v.in?.photo ? `<img src="${esc(v.in.photo)}" alt="Check-in">` : 'Tanpa foto'}</div>
+        <div>${v.out?.photo ? `<img src="${esc(v.out.photo)}" alt="Check-out">` : (v.out ? 'Tanpa foto check-out' : 'Belum check-out')}</div></div>
+        <figcaption><b>${esc(v.customerName)}</b>${esc(v.staffName)}. Kiri: check-in ${fmtTime(ptTime(v.in))}, kanan: check-out ${v.out ? fmtTime(ptTime(v.out)) : '–'}</figcaption></figure>`).join('')}</div>` : ''}
+    <div class="rpt-sign"><div>Petugas lapangan<div class="ln">${staff ? esc(nameOf(staff)) : '(..............................)'}</div></div><div>Diperiksa oleh<div class="ln">${isMgr() ? esc(me().name) : '(..............................)'}</div></div></div>
+    <p class="rpt-foot">Waktu berdasarkan server. Koordinat dari GPS perangkat petugas saat check-in dan check-out.</p></div>`;
+}
+function openPrint() {
+  if (!S.visLoaded) return toast('Data masih dimuat, coba sebentar lagi.');
+  const pr = $('#printRoot');
+  pr.innerHTML = `<div class="pr-bar"><button class="btn sm" data-act="closePrint">✕ Tutup</button><h2>Pratinjau laporan, ${esc(fmtDate(S.date))}</h2>
+    <button class="btn sm" data-act="dlReport">${ICON.dl}Unduh (HTML)</button><button class="btn primary sm" data-act="doPrint">${ICON.print}Cetak</button></div><div class="pr-page">${reportHTML()}</div>`;
+  pr.hidden = false; pr.scrollTop = 0; document.body.style.overflow = 'hidden';
+}
+function closePrint() { const pr = $('#printRoot'); pr.hidden = true; pr.innerHTML = ''; document.body.style.overflow = ''; }
+function exportCSV() {
+  const vs = reportVisits(); if (!vs.length) return toast('Tidak ada data untuk diunduh.', 'bad');
+  const q = x => `"${String(x ?? '').replace(/"/g, '""')}"`;
+  const num = x => x == null ? '' : String(x).replace('.', ',');
+  const head = ['Tanggal','Petugas','Customer','Alamat','Keperluan','Catatan','Jam check-in','Lat check-in','Lng check-in','Akurasi check-in (m)','Jarak check-in (m)','Status lokasi','Jam check-out','Lat check-out','Lng check-out','Akurasi check-out (m)','Jarak check-out (m)','Durasi (menit)','Hasil kunjungan','Peta check-in'];
+  const rows = vs.map(v => { const ti = ptTime(v.in), to = v.out ? ptTime(v.out) : null, o = v.out || {};
+    return [v.date, v.staffName, v.customerName, v.customerAddress, v.purpose, v.note, fmtTimeS(ti), num(v.in.lat), num(v.in.lng), v.in.acc, v.in.dist ?? '', v.in.inside === false ? 'Di luar radius' : v.in.inside ? 'Di lokasi' : 'Titik customer belum ada',
+      to ? fmtTimeS(to) : '', num(o.lat), num(o.lng), o.acc ?? '', o.dist ?? '', to ? Math.round((to - ti) / 60000) : '', o.result || '', gmaps(v.in.lat, v.in.lng)].map(q).join(';'); });
+  download(`kunjungan-${S.date}${S.staffFilter ? '-' + S.staffFilter : ''}.csv`, '\ufeff' + [head.map(q).join(';'), ...rows].join('\r\n'), 'text/csv;charset=utf-8');
+  toast('File CSV diunduh. Buka dengan Excel.');
+}
+
+init();
+</script>
+</body>
+</html>
