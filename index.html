@@ -410,7 +410,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
    Kunjungan Lapangan: check-in/out customer dengan GPS, foto, timestamp
    Data: Firestore koleksi fv_accounts, fv_customers, fv_visits, fv_settings
    ====================================================================== */
-const C = { acc:'fv_accounts', cust:'fv_customers', vis:'fv_visits', set:'fv_settings/app' };
+const C = { acc:'fv_accounts', cust:'fv_customers', vis:'fv_visits', ph:'fv_photos', set:'fv_settings/app' };
 const PURPOSES = ['Kunjungan rutin', 'Survey lokasi', 'Instalasi', 'Perbaikan / service', 'Penagihan', 'Pengiriman barang', 'Meeting customer', 'Lainnya'];
 const ROLE = { manager:'Manager', staff:'Petugas lapangan' };
 
@@ -506,6 +506,7 @@ const ICON = {
   hist:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
   face:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c.9 1.2 2.1 1.8 3.5 1.8s2.6-.6 3.5-1.8"/><path d="M9 9.5h.01M15 9.5h.01"/></svg>',
   sign:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c3-1 4-6 6-6s1 5 3 5 2-3 4-3 2 2 5 2"/><path d="M3 21h18"/></svg>',
+  doc:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h8M9 17h6"/></svg>',
   user:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>'
 };
 const chip = (t, c) => `<span class="chip ${c}">${esc(t)}</span>`;
@@ -528,7 +529,7 @@ let SERVER = () => new Date().toISOString();
 
 /* ---------- state ---------- */
 const S = { db:null, accounts:{}, accLoaded:false, customers:[], visits:[], visLoaded:false, active:[], settings:{}, me:null, tab:null,
-  date:today(), staffFilter:'', unsubVis:null, unsubAct:null, screen:null, pending:false };
+  date:today(), staffFilter:'', rp:{ from: dstr(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), to: today(), staff:'', boss:'', note:'' }, unsubVis:null, unsubAct:null, screen:null, pending:false };
 const me = () => S.accounts[S.me] || {};
 const isMgr = () => me().role === 'manager';
 const nameOf = u => S.accounts[u]?.name || u;
@@ -626,7 +627,7 @@ function paint(scr) {
   }
   const brand = `<div class="brand"><span class="logo">${ICON.logo}</span><div style="min-width:0"><div class="b-title">Kunjungan Lapangan</div><div class="b-sub" id="officeName">${esc(S.settings.officeName || '')}</div></div></div>`;
   if (isMgr()) {
-    const tabs = [['pantau','Pemantauan',ICON.map], ['customer','Customer',ICON.bld], ['pengguna','Pengguna',ICON.users], ['pengaturan','Pengaturan',ICON.gear]];
+    const tabs = [['pantau','Pemantauan',ICON.map], ['customer','Customer',ICON.bld], ['laporan','Laporan periode',ICON.doc], ['pengguna','Pengguna',ICON.users], ['pengaturan','Pengaturan',ICON.gear]];
     if (!tabs.some(t => t[0] === S.tab)) S.tab = 'pantau';
     app.innerHTML = `<div class="desk">
       <aside class="side">
@@ -659,7 +660,7 @@ function paint(scr) {
   setTab(S.tab);
 }
 function updateHeader() { const n = $('#whoName'); if (n) n.textContent = me().name || ''; }
-const TITLES = { pantau:['Pemantauan kunjungan','Posisi check-in dan check-out petugas, foto bukti, dan waktu server.'], customer:['Customer','Daftar customer beserta titik lokasi dan radius absen.'], pengguna:['Pengguna','Akun manager dan petugas lapangan.'], pengaturan:['Pengaturan','Identitas perusahaan dan radius default.'] };
+const TITLES = { pantau:['Pemantauan kunjungan','Posisi check-in dan check-out petugas, foto bukti, dan waktu server.'], customer:['Customer','Daftar customer beserta titik lokasi dan radius absen.'], laporan:['Laporan periode','Susun laporan dari data sistem untuk rentang tanggal tertentu, lalu cetak sebagai PDF untuk persetujuan atasan.'], pengguna:['Pengguna','Akun manager dan petugas lapangan.'], pengaturan:['Pengaturan','Identitas perusahaan dan radius default.'] };
 function setTab(t) {
   S.tab = t;
   document.querySelectorAll('.tab').forEach(b => { b.classList.toggle('on', b.dataset.tab === t); b.setAttribute('aria-selected', b.dataset.tab === t); });
@@ -686,13 +687,33 @@ function renderContent() {
   if (ae && c.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { S.pending = true; return; }
   S.pending = false;
   c.innerHTML = (VIEWS[S.tab] || (() => ''))();
+  if (['kunjungan', 'riwayat', 'pantau'].includes(S.tab)) loadMedia(shownVisits());
 }
 document.addEventListener('focusout', () => setTimeout(() => { if (S.pending) renderContent(); }, 60));
 setInterval(() => { if (S.tab === 'kunjungan' && S.active.length) renderContent(); }, 60000);
 
+/* ---------- media (foto disimpan terpisah di fv_photos) ---------- */
+const PH = {};
+const phKey = v => v.id + ':' + (v.out ? 'o' : 'i');
+function media(v) {
+  if (!v.media) return { in_photo: v.in?.photo || null, in_selfie: v.in?.selfie || null, out_photo: v.out?.photo || null, signature: v.out?.signature || null };
+  const c = PH[v.id]; return c && c.key === phKey(v) && c.data ? c.data : null;
+}
+async function loadMedia(list) {
+  const need = list.filter(v => v.media && !(PH[v.id] && PH[v.id].key === phKey(v)));
+  if (!need.length) return;
+  need.forEach(v => { PH[v.id] = { key: phKey(v), data: null }; });
+  await Promise.all(need.map(async v => {
+    try { const snap = await S.db.doc(C.ph + '/' + v.id).get(); PH[v.id] = { key: phKey(v), data: snap.exists ? snap.data() : {} }; }
+    catch (e) { PH[v.id] = { key: phKey(v), data: {} }; }
+  }));
+  renderContent();
+}
+const shownVisits = () => isMgr() ? S.visits : [...S.visits.filter(v => v.username === S.me), ...S.active];
+
 /* ---------- visit rendering ---------- */
 const loadingBlock = () => `<div class="loading" style="min-height:30vh"><div><div class="spin"></div>Memuat kunjungan…</div></div>`;
-function flagsOf(v) {
+function flagsOf(v, list) {
   const f = [];
   if (v.in?.inside === false) f.push(`Check-in berjarak ${fmtDist(v.in.dist)} dari titik customer (radius ${v.in.radius} m)`);
   if (v.out?.inside === false) f.push(`Check-out berjarak ${fmtDist(v.out.dist)} dari titik customer`);
@@ -707,13 +728,13 @@ function flagsOf(v) {
   const age = (x, l) => { if (x > 120) f.push(`${l} bukan diambil langsung dari kamera (file dibuat ${Math.round(x / 60)} menit sebelumnya)`); };
   age(v.in?.photoAge, 'Foto lokasi'); age(v.in?.selfieAge, 'Selfie'); age(v.out?.photoAge, 'Foto selesai');
   if (v.out && v.out.noSign) f.push(`Tanpa tanda tangan PIC: ${v.out.noSign}`);
-  const tr = travelFlag(v); if (tr) f.push(tr);
+  const tr = travelFlag(v, list || S.visits); if (tr) f.push(tr);
   return f;
 }
-function travelFlag(v) {
+function travelFlag(v, list) {
   const t1 = ptTime(v.in); if (!t1 || !v.in) return null;
   let prev = null, pt = null;
-  for (const o of S.visits) {
+  for (const o of list) {
     if (o.id === v.id || o.username !== v.username) continue;
     for (const k of ['in', 'out']) { const p = o[k]; if (!p || typeof p.lat !== 'number') continue; const t = ptTime(p); if (t && t < t1 && (!pt || t > pt)) { pt = t; prev = p; } }
   }
@@ -735,9 +756,10 @@ function visitCard(v, mgr) {
   const dur = tout ? tout - tin : Date.now() - tin;
   const fl = mgr ? flagsOf(v) : [], cust = custOf(v);
   const canSetLoc = mgr && v.in && (!cust || !hasLoc(cust));
-  const sig = v.out ? (v.out.signature ? `<img class="sig-img" src="${esc(v.out.signature)}" alt="Tanda tangan PIC">PIC: <b>${esc(v.out.picName || '–')}</b>` : v.out.noSign ? `<span class="muted">Tidak ada (${esc(v.out.noSign)})</span>` : '–') : '<span class="muted">Saat check-out</span>';
+  const m = media(v), ld = !m, mm = m || {};
+  const sig = v.out ? (mm.signature ? `<img class="sig-img" src="${esc(mm.signature)}" alt="Tanda tangan PIC">PIC: <b>${esc(v.out.picName || '–')}</b>` : ld && v.out.hasSignature ? '<span class="muted">Memuat…</span>' : v.out.noSign ? `<span class="muted">Tidak ada (${esc(v.out.noSign)})</span>` : '–') : '<span class="muted">Saat check-out</span>';
   return `<article class="rep wide" id="v-${esc(v.id)}">
-    <div class="rep-photos three">${thumb(v, 'in', v.in?.photo, 'Lokasi', 'Tanpa foto lokasi')}${thumb(v, 'selfie', v.in?.selfie, 'Selfie', 'Tanpa selfie')}${thumb(v, 'out', v.out?.photo, 'Selesai', v.out ? 'Tanpa foto selesai' : 'Belum check-out')}</div>
+    <div class="rep-photos three">${thumb(v, 'in', mm.in_photo, 'Lokasi', ld ? 'Memuat foto…' : 'Tanpa foto lokasi')}${thumb(v, 'selfie', mm.in_selfie, 'Selfie', ld ? 'Memuat…' : 'Tanpa selfie')}${thumb(v, 'out', mm.out_photo, 'Selesai', ld && v.out ? 'Memuat…' : v.out ? 'Tanpa foto selesai' : 'Belum check-out')}</div>
     <div class="rep-body">
       <div class="rep-head"><div><h3>${esc(v.customerName)}</h3>${v.customerAddress ? `<p class="meta">${esc(v.customerAddress)}</p>` : ''}</div>
         <div style="display:grid;gap:4px;justify-items:end">${v.status === 'selesai' ? chip('Selesai', 'ok') : chip('Sedang berkunjung', 'go')}${locChip(v.in)}${fl.length ? chip(`${fl.length} peringatan`, 'bad') : ''}</div></div>
@@ -822,10 +844,26 @@ const VIEWS = {
         <td>${esc(c.contact || '–')}</td>
         <td>${hasLoc(c) ? `<a href="${gmaps(c.lat, c.lng)}" target="_blank" rel="noopener">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</a>` : chip('Belum diatur', 'idle')}</td>
         <td>${c.radius || defRadius()} m</td>
-        <td>${c.active === false ? chip('Nonaktif', 'idle') : chip('Aktif', 'ok')}</td>
-        <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="custForm" data-id="${esc(c.id)}">Ubah</button></td></tr>`).join('')}
+        <td>${c.active === false ? chip('Nonaktif', 'idle') : c.pending ? chip('Baru dari petugas', 'go') : chip('Aktif', 'ok')}${c.pending ? `<br><span class="muted" style="font-size:12px">Ditambahkan ${esc(c.createdByName || c.createdBy || '')} saat check-in</span>` : ''}</td>
+        <td style="text-align:right;white-space:nowrap">${c.pending && !hasLoc(c) && typeof c.suggestLat === 'number' ? `<button class="btn sm ok" data-act="custApprove" data-id="${esc(c.id)}">Setujui titik check-in</button> ` : ''}<button class="btn sm" data-act="custForm" data-id="${esc(c.id)}">Ubah</button></td></tr>`).join('')}
     </tbody></table></div>
     <p class="muted" style="font-size:13px;margin-top:12px">Customer tanpa titik lokasi tetap bisa dikunjungi. Setelah petugas check-in di sana, tekan <b>Jadikan titik lokasi customer</b> pada kartu kunjungannya di menu Pemantauan.</p>`;
+  },
+  laporan() {
+    const r = S.rp;
+    return `<div class="card" style="max-width:720px">
+      <h3>Susun laporan untuk atasan</h3>
+      <p class="loc" style="margin-bottom:8px">Data diambil otomatis dari sistem: ringkasan, tren harian, kinerja per petugas, rekap customer, dan temuan kepatuhan. Hasilnya dicetak atau disimpan sebagai PDF, lalu ditandatangani atasan.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 14px">
+        <div class="field"><label for="rp-from">Dari tanggal</label><input id="rp-from" type="date" data-rp="from" value="${r.from}" max="${today()}"></div>
+        <div class="field"><label for="rp-to">Sampai tanggal</label><input id="rp-to" type="date" data-rp="to" value="${r.to}" max="${today()}"></div>
+        <div class="field"><label for="rp-staff">Petugas</label><select id="rp-staff" data-rp="staff"><option value="">Semua petugas</option>${staffList().map(s => `<option value="${esc(s.u)}"${r.staff === s.u ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 14px">${[['Bulan ini', 'tm'], ['Bulan lalu', 'lm'], ['7 hari terakhir', 'd7'], ['30 hari terakhir', 'd30']].map(([l, k]) => `<button type="button" class="btn sm" data-act="rpQuick" data-k="${k}">${l}</button>`).join('')}</div>
+      <div class="field"><label for="rp-boss">Ditujukan kepada (nama dan jabatan atasan)</label><input id="rp-boss" type="text" data-rp="boss" value="${esc(r.boss)}" placeholder="Contoh: Bapak Hendra, Direktur Operasional"></div>
+      <div class="field"><label for="rp-note">Catatan manager</label><textarea id="rp-note" data-rp="note" rows="5" placeholder="Kendala di lapangan, tindak lanjut atas temuan, rencana periode berikutnya">${esc(r.note)}</textarea><small>Catatan ini ikut tercetak di laporan.</small></div>
+      <button class="btn mop" data-act="buildPeriod">${ICON.doc}Susun laporan</button>
+    </div>`;
   },
   pengguna() {
     const rows = Object.entries(S.accounts).sort((a, b) => (a[1].role === b[1].role ? a[1].name.localeCompare(b[1].name) : a[1].role === 'manager' ? -1 : 1));
@@ -1054,10 +1092,12 @@ document.addEventListener('change', e => {
   }
   if (t.dataset.change === 'nosign') { $('#nosign-box').hidden = !t.checked; $('#sig-wrap').style.opacity = t.checked ? .35 : 1; $('#sig-wrap').style.pointerEvents = t.checked ? 'none' : ''; }
   if (t.dataset.change === 'ckcust') { $('#ck-new').hidden = t.value !== '__new'; renderGPS(); }
+  if (t.dataset.rp) S.rp[t.dataset.rp] = t.value;
   if (t.dataset.change === 'date') { setDate(t.value || today()); t.blur(); }
   if (t.dataset.change === 'staff') { S.staffFilter = t.value; mapFit = true; t.blur(); renderContent(); updateMap(); }
 });
 document.addEventListener('input', e => {
+  if (e.target.dataset.rp) S.rp[e.target.dataset.rp] = e.target.value;
   if (e.target.name === 'coord' && MODALMAP && CM) { const p = parseCoord(e.target.value); if (p) setCustPin(p, false); }
 });
 
@@ -1102,7 +1142,13 @@ const FORMS = {
     if (G.mode === 'in') {
       const cid = fd.get('cust'); if (!cid) return toast('Pilih customer terlebih dulu.', 'bad');
       let cust = null, name, addr;
-      if (cid === '__new') { name = (fd.get('newName') || '').trim(); addr = (fd.get('newAddr') || '').trim(); if (!name) return toast('Isi nama customer.', 'bad'); }
+      let newCust = null;
+      if (cid === '__new') {
+        name = (fd.get('newName') || '').trim(); addr = (fd.get('newAddr') || '').trim(); if (!name) return toast('Isi nama customer.', 'bad');
+        const ex = S.customers.find(c => c.name.trim().toLowerCase() === name.toLowerCase());
+        if (ex) { cust = ex; name = ex.name; addr = ex.address || addr; }
+        else newCust = S.db.collection(C.cust).doc();
+      }
       else { cust = S.customers.find(c => c.id === cid); name = cust.name; addr = cust.address || ''; }
       if (!G.photos.loc) return toast('Foto lokasi wajib diambil.', 'bad');
       if (!G.photos.selfie) return toast('Selfie di lokasi wajib diambil.', 'bad');
@@ -1114,13 +1160,17 @@ const FORMS = {
         const photo = await storePhoto(G.photos.loc, st('CHECK-IN'));
         const selfie = await storePhoto(G.photos.selfie, st('SELFIE'), 720, 100000);
         busy(f, true, 'Mengirim…');
-        const ref = S.db.collection(C.vis).doc();
-        const ok = await saveSoon(ref.set({
-          date: dstr(now), username: S.me, staffName: me().name, customerId: cust ? cust.id : null, customerName: name, customerAddress: addr,
-          purpose: fd.get('purpose') || '', note: (fd.get('note') || '').trim(), status: 'berlangsung',
-          in: { device: now.toISOString(), server: SERVER(), ...gpsMeta, dist, radius: r, inside: r == null ? null : dist <= r, photo, selfie, photoAge: G.ages.loc ?? null, selfieAge: G.ages.selfie ?? null },
+        if (newCust) await saveSoon(newCust.set({ name, address: addr, contact: '', lat: null, lng: null, radius: null, active: true, createdAt: now.toISOString(),
+          pending: true, createdBy: S.me, createdByName: me().name, suggestLat: fx.lat, suggestLng: fx.lng, suggestAcc: fx.acc }));
+        const ref = S.db.collection(C.vis).doc(), wb = S.db.batch();
+        wb.set(S.db.doc(C.ph + '/' + ref.id), { in_photo: photo, in_selfie: selfie, out_photo: null, signature: null });
+        wb.set(ref, {
+          date: dstr(now), username: S.me, staffName: me().name, customerId: cust ? cust.id : newCust ? newCust.id : null, customerName: name, customerAddress: addr,
+          purpose: fd.get('purpose') || '', note: (fd.get('note') || '').trim(), status: 'berlangsung', media: true,
+          in: { device: now.toISOString(), server: SERVER(), ...gpsMeta, dist, radius: r, inside: r == null ? null : dist <= r, hasPhoto: true, hasSelfie: true, photoAge: G.ages.loc ?? null, selfieAge: G.ages.selfie ?? null },
           out: null
-        }));
+        });
+        const ok = await saveSoon(wb.commit());
         closeModal(); toast(ok ? `Check-in di ${name} tercatat.` : 'Sinyal lemah: check-in tersimpan di HP dan terkirim otomatis saat ada sinyal.');
       } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
     } else {
@@ -1137,8 +1187,12 @@ const FORMS = {
       try {
         const photo = G.photos.out ? await storePhoto(G.photos.out, [`CHECK-OUT  ${v.customerName}`, `${fmtStamp(now)}  |  ${fx.lat.toFixed(6)}, ${fx.lng.toFixed(6)} ±${fx.acc}m  |  ${me().name}`]) : null;
         const signature = noSign ? null : sigData();
-        const ok = await saveSoon(S.db.doc(C.vis + '/' + v.id).update({ status: 'selesai',
-          out: { device: now.toISOString(), server: SERVER(), ...gpsMeta, dist, radius: r, inside: r == null ? null : dist <= r, photo, photoAge: G.ages.out ?? null, result, picName: noSign ? '' : pic, signature, noSign: noSign ? reason : null } }));
+        const wb = S.db.batch();
+        if (v.media) wb.set(S.db.doc(C.ph + '/' + v.id), { out_photo: photo, signature }, { merge: true });
+        wb.update(S.db.doc(C.vis + '/' + v.id), { status: 'selesai',
+          out: { device: now.toISOString(), server: SERVER(), ...gpsMeta, dist, radius: r, inside: r == null ? null : dist <= r, hasPhoto: !!photo, photoAge: G.ages.out ?? null, result, picName: noSign ? '' : pic, hasSignature: !!signature, noSign: noSign ? reason : null,
+            ...(v.media ? {} : { photo, signature }) } });
+        const ok = await saveSoon(wb.commit());
         closeModal(); toast(ok ? 'Check-out tercatat. Terima kasih!' : 'Sinyal lemah: check-out tersimpan di HP dan terkirim otomatis saat ada sinyal.');
       } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
     }
@@ -1153,7 +1207,7 @@ const FORMS = {
     try {
       const ref = id ? S.db.doc(C.cust + '/' + id) : S.db.collection(C.cust).doc();
       const old = id ? S.customers.find(c => c.id === id) : null;
-      await ref.set({ name: v.name.trim(), address: v.address.trim(), contact: v.contact.trim(), lat: p ? p.lat : null, lng: p ? p.lng : null, radius: rad, active: v.active !== 'off', createdAt: old?.createdAt || new Date().toISOString() });
+      await ref.set({ name: v.name.trim(), address: v.address.trim(), contact: v.contact.trim(), lat: p ? p.lat : null, lng: p ? p.lng : null, radius: rad, active: v.active !== 'off', createdAt: old?.createdAt || new Date().toISOString(), pending: false, createdBy: old?.createdBy || null, createdByName: old?.createdByName || null });
       closeModal(); toast(id ? 'Customer diperbarui.' : 'Customer ditambahkan.');
     } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
   },
@@ -1199,7 +1253,7 @@ const FORMS = {
   },
   async delVisit(f) {
     busy(f, true);
-    try { await S.db.doc(C.vis + '/' + f.dataset.id).delete(); closeModal(); toast('Kunjungan dihapus.'); }
+    try { const b = S.db.batch(); b.delete(S.db.doc(C.vis + '/' + f.dataset.id)); b.delete(S.db.doc(C.ph + '/' + f.dataset.id)); await b.commit(); closeModal(); toast('Kunjungan dihapus.'); }
     catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
   }
 };
@@ -1217,7 +1271,7 @@ const ACT = {
   goto: d => { MAP && MAP.closePopup(); const el = document.getElementById('v-' + d.id); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.animate([{ outline: '3px solid var(--mop)' }, { outline: '3px solid transparent' }], { duration: 1600 }); } },
   zoom: d => {
     const v = S.visits.find(x => x.id === d.id) || S.active.find(x => x.id === d.id); if (!v) return;
-    const src = d.k === 'selfie' ? v.in.selfie : v[d.k]?.photo, p = d.k === 'out' ? v.out : v.in;
+    const mm = media(v) || {}; const src = d.k === 'selfie' ? mm.in_selfie : d.k === 'out' ? mm.out_photo : mm.in_photo, p = d.k === 'out' ? v.out : v.in; if (!src) return;
     const label = { in: 'foto lokasi', selfie: 'selfie', out: 'foto selesai' }[d.k];
     openModal(`${sheetHead(`${v.customerName}, ${label}`)}<div class="sheet-b"><img src="${esc(src)}" alt="${label} ${esc(v.customerName)}" style="width:100%;border-radius:10px;display:block"><p class="muted">${esc(v.staffName)}, ${fmtTimeS(ptTime(p))}, ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)} (±${p.acc} m) <a href="${gmaps(p.lat, p.lng)}" target="_blank" rel="noopener">Buka di Google Maps</a></p></div>`, true);
   },
@@ -1233,7 +1287,7 @@ const ACT = {
       <div class="field"><label for="c-name">Nama customer</label><input id="c-name" type="text" name="name" value="${esc(c?.name || '')}" required></div>
       <div class="field"><label for="c-addr">Alamat</label><input id="c-addr" type="text" name="address" value="${esc(c?.address || '')}"></div>
       <div class="field"><label for="c-ct">Kontak (PIC dan nomor telepon)</label><input id="c-ct" type="text" name="contact" value="${esc(c?.contact || '')}"></div>
-      <div class="field"><label for="c-coord">Titik lokasi (latitude, longitude)</label><input id="c-coord" type="text" name="coord" value="${hasLoc(c) ? `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}` : ''}" placeholder="-6.200000, 106.816666">
+      <div class="field"><label for="c-coord">Titik lokasi (latitude, longitude)</label><input id="c-coord" type="text" name="coord" value="${hasLoc(c) ? `${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}` : ''}" placeholder="-6.200000, 106.816666">${c && !hasLoc(c) && typeof c.suggestLat === 'number' ? `<span class="coord-help">Titik saat check-in petugas: <b>${c.suggestLat.toFixed(6)}, ${c.suggestLng.toFixed(6)}</b> (±${c.suggestAcc} m). <button type="button" class="linkbtn" data-act="useSuggest" data-lat="${c.suggestLat}" data-lng="${c.suggestLng}">Pakai titik ini</button></span>` : ''}
         <span class="coord-help">Klik titik di peta, tekan "Pakai lokasi saya" saat berada di lokasi, atau tempel koordinat dari Google Maps (klik kanan titik di Google Maps, lalu klik angka koordinatnya untuk menyalin).</span>
         <div id="custMap" class="minimap" style="height:260px"></div>
         <span><button type="button" class="btn sm" data-act="custHere">${ICON.pin}Pakai lokasi saya</button></span></div>
@@ -1247,6 +1301,12 @@ const ACT = {
       if (hasLoc(c)) setCustPin(c, false);
     }, 60);
   },
+  async custApprove(d, b) {
+    const c = S.customers.find(x => x.id === d.id); if (!c) return; b.disabled = true;
+    try { await S.db.doc(C.cust + '/' + c.id).update({ lat: c.suggestLat, lng: c.suggestLng, pending: false }); toast(`Titik lokasi ${c.name} disetujui.`); }
+    catch (e) { toast(errMsg(e), 'bad'); b.disabled = false; }
+  },
+  useSuggest: d => setCustPin({ lat: +d.lat, lng: +d.lng }, true),
   custHere: (d, b) => {
     if (!navigator.geolocation) return toast('GPS tidak didukung di perangkat ini.', 'bad');
     b.disabled = true; b.textContent = 'Mencari lokasi…';
@@ -1257,7 +1317,7 @@ const ACT = {
     const v = S.visits.find(x => x.id === d.id); if (!v) return; const p = v.in, cust = custOf(v);
     b.disabled = true;
     try {
-      if (cust) await S.db.doc(C.cust + '/' + cust.id).update({ lat: p.lat, lng: p.lng });
+      if (cust) await S.db.doc(C.cust + '/' + cust.id).update({ lat: p.lat, lng: p.lng, pending: false });
       else { const ref = S.db.collection(C.cust).doc(); await ref.set({ name: v.customerName, address: v.customerAddress || '', contact: '', lat: p.lat, lng: p.lng, radius: null, active: true, createdAt: new Date().toISOString() }); await S.db.doc(C.vis + '/' + v.id).update({ customerId: ref.id }); }
       toast(`Titik lokasi ${v.customerName} disimpan. Check-in berikutnya akan diperiksa radiusnya.`);
     } catch (e) { toast(errMsg(e), 'bad'); b.disabled = false; }
@@ -1286,10 +1346,20 @@ const ACT = {
     openModal(`${sheetHead('Hapus pengguna?')}<form data-form="delUser" data-user="${esc(d.user)}"><div class="sheet-b"><p style="margin-top:0">Akun <b>${esc(a.name)}</b> (${esc(d.user)}) akan dihapus permanen dan tidak bisa login lagi.</p><p class="muted" style="font-size:13.5px">Riwayat kunjungan yang sudah tercatat tetap tersimpan dengan nama petugas ini. Jika hanya ingin menghentikan sementara, gunakan <b>Nonaktifkan</b>.</p></div>
       <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn bad" type="submit">Hapus permanen</button></div></form>`);
   },
+  rpQuick: d => {
+    const n = new Date(), y = n.getFullYear(), mo = n.getMonth();
+    const set = (a, b) => { S.rp.from = dstr(a); S.rp.to = dstr(b); renderContent(); };
+    if (d.k === 'tm') set(new Date(y, mo, 1), n);
+    if (d.k === 'lm') set(new Date(y, mo - 1, 1), new Date(y, mo, 0));
+    if (d.k === 'd7') set(new Date(y, mo, n.getDate() - 6), n);
+    if (d.k === 'd30') set(new Date(y, mo, n.getDate() - 29), n);
+  },
+  buildPeriod: (d, b) => buildPeriod(b),
   csv: () => exportCSV(),
   print: () => openPrint(),
   closePrint: () => closePrint(),
   doPrint: () => { try { window.print(); } catch (e) { toast('Gunakan tombol Unduh lalu cetak dari browser.', 'bad'); } },
+  dlPeriod: () => { if (!PERIOD) return; download(`laporan-periode-${PERIOD.from}-sd-${PERIOD.to}.html`, `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Laporan periode ${PERIOD.from} s.d. ${PERIOD.to}</title><style>body{margin:0;background:#fff}.page{max-width:900px;margin:24px auto;padding:0 20px}@media print{@page{size:A4;margin:12mm}.page{margin:0;padding:0;max-width:none}}${RPT_CSS}</style></head><body><div class="page">${periodHTML(PERIOD)}</div></body></html>`, 'text/html'); },
   dlReport: () => { download(`laporan-kunjungan-${S.date}.html`, `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Laporan kunjungan ${S.date}</title><style>body{margin:0;background:#fff}.page{max-width:900px;margin:24px auto;padding:0 20px}@media print{@page{size:A4;margin:12mm}.page{margin:0;padding:0;max-width:none}}${RPT_CSS}</style></head><body><div class="page">${reportHTML()}</div></body></html>`, 'text/html'); }
 };
 document.addEventListener('click', e => {
@@ -1314,17 +1384,18 @@ function reportHTML() {
       ${vs.map((v, i) => { const ti = ptTime(v.in), to = v.out ? ptTime(v.out) : null; return `<tr><td>${i + 1}</td><td><b>${esc(v.customerName)}</b>${v.customerAddress ? '<br>' + esc(v.customerAddress) : ''}</td>${staff ? '' : `<td>${esc(v.staffName)}</td>`}
         <td>${ptCell(v.in)}</td><td>${ptCell(v.out)}</td><td>${to ? fmtDur(to - ti) : '–'}</td>
         <td class="${v.in.inside === false ? 'bad' : v.in.inside ? 'ok' : ''}">${v.in.inside === false ? 'Di luar radius' : v.in.inside ? 'Di lokasi' : 'Titik customer belum ada'}</td>
-        <td>${esc(v.purpose || '')}${v.note ? '<br>Catatan: ' + esc(v.note) : ''}${v.out?.result ? '<br>Hasil: ' + esc(v.out.result) : ''}${v.out ? (v.out.signature ? `<br>PIC: ${esc(v.out.picName || '')}<img class="sg" src="${esc(v.out.signature)}" alt="TTD">` : v.out.noSign ? `<br>Tanpa TTD PIC: ${esc(v.out.noSign)}` : '') : ''}${isMgr() ? flagsOf(v).map(t => `<div class="fl">⚠ ${esc(t)}</div>`).join('') : ''}</td></tr>`; }).join('')}</tbody></table>` : '<p>Tidak ada kunjungan pada tanggal ini.</p>'}
+        <td>${esc(v.purpose || '')}${v.note ? '<br>Catatan: ' + esc(v.note) : ''}${v.out?.result ? '<br>Hasil: ' + esc(v.out.result) : ''}${v.out ? ((media(v) || {}).signature ? `<br>PIC: ${esc(v.out.picName || '')}<img class="sg" src="${esc(media(v).signature)}" alt="TTD">` : v.out.noSign ? `<br>Tanpa TTD PIC: ${esc(v.out.noSign)}` : '') : ''}${isMgr() ? flagsOf(v).map(t => `<div class="fl">⚠ ${esc(t)}</div>`).join('') : ''}</td></tr>`; }).join('')}</tbody></table>` : '<p>Tidak ada kunjungan pada tanggal ini.</p>'}
     ${vs.length ? `<h2>Foto bukti</h2><div class="rpt-photos">${vs.map(v => `<figure><div class="pair">
-        <div>${v.in?.photo ? `<img src="${esc(v.in.photo)}" alt="Lokasi">` : 'Tanpa foto'}</div>
-        <div>${v.in?.selfie ? `<img src="${esc(v.in.selfie)}" alt="Selfie">` : 'Tanpa selfie'}</div>
-        <div>${v.out?.photo ? `<img src="${esc(v.out.photo)}" alt="Selesai">` : (v.out ? 'Tanpa foto selesai' : 'Belum check-out')}</div></div>
+        <div>${(media(v) || {}).in_photo ? `<img src="${esc(media(v).in_photo)}" alt="Lokasi">` : 'Tanpa foto'}</div>
+        <div>${(media(v) || {}).in_selfie ? `<img src="${esc(media(v).in_selfie)}" alt="Selfie">` : 'Tanpa selfie'}</div>
+        <div>${(media(v) || {}).out_photo ? `<img src="${esc(media(v).out_photo)}" alt="Selesai">` : (v.out ? 'Tanpa foto selesai' : 'Belum check-out')}</div></div>
         <figcaption><b>${esc(v.customerName)}</b>${esc(v.staffName)}. Lokasi dan selfie: check-in ${fmtTime(ptTime(v.in))}. Kanan: check-out ${v.out ? fmtTime(ptTime(v.out)) : '–'}</figcaption></figure>`).join('')}</div>` : ''}
     <div class="rpt-sign"><div>Petugas lapangan<div class="ln">${staff ? esc(nameOf(staff)) : '(..............................)'}</div></div><div>Diperiksa oleh<div class="ln">${isMgr() ? esc(me().name) : '(..............................)'}</div></div></div>
     <p class="rpt-foot">Waktu berdasarkan server. Koordinat dari GPS perangkat petugas saat check-in dan check-out.</p></div>`;
 }
-function openPrint() {
+async function openPrint() {
   if (!S.visLoaded) return toast('Data masih dimuat, coba sebentar lagi.');
+  toast('Menyiapkan laporan dan foto…'); await loadMedia(reportVisits());
   const pr = $('#printRoot');
   pr.innerHTML = `<div class="pr-bar"><button class="btn sm" data-act="closePrint">✕ Tutup</button><h2>Pratinjau laporan, ${esc(fmtDate(S.date))}</h2>
     <button class="btn sm" data-act="dlReport">${ICON.dl}Unduh (HTML)</button><button class="btn primary sm" data-act="doPrint">${ICON.print}Cetak</button></div><div class="pr-page">${reportHTML()}</div>`;
@@ -1338,9 +1409,88 @@ function exportCSV() {
   const head = ['Tanggal','Petugas','Customer','Alamat','Keperluan','Catatan','Jam check-in','Lat check-in','Lng check-in','Akurasi check-in (m)','Jarak check-in (m)','Status lokasi','Jam check-out','Lat check-out','Lng check-out','Akurasi check-out (m)','Jarak check-out (m)','Durasi (menit)','Hasil kunjungan','Nama PIC','Tanda tangan PIC','Selfie','Peringatan','Peta check-in'];
   const rows = vs.map(v => { const ti = ptTime(v.in), to = v.out ? ptTime(v.out) : null, o = v.out || {};
     return [v.date, v.staffName, v.customerName, v.customerAddress, v.purpose, v.note, fmtTimeS(ti), num(v.in.lat), num(v.in.lng), v.in.acc, v.in.dist ?? '', v.in.inside === false ? 'Di luar radius' : v.in.inside ? 'Di lokasi' : 'Titik customer belum ada',
-      to ? fmtTimeS(to) : '', num(o.lat), num(o.lng), o.acc ?? '', o.dist ?? '', to ? Math.round((to - ti) / 60000) : '', o.result || '', o.picName || '', v.out ? (o.signature ? 'Ada' : 'Tidak ada: ' + (o.noSign || '')) : '', v.in.selfie ? 'Ada' : 'Tidak ada', flagsOf(v).join(' | '), gmaps(v.in.lat, v.in.lng)].map(q).join(';'); });
+      to ? fmtTimeS(to) : '', num(o.lat), num(o.lng), o.acc ?? '', o.dist ?? '', to ? Math.round((to - ti) / 60000) : '', o.result || '', o.picName || '', v.out ? ((o.signature || o.hasSignature) ? 'Ada' : 'Tidak ada: ' + (o.noSign || '')) : '', (v.in.selfie || v.in.hasSelfie) ? 'Ada' : 'Tidak ada', flagsOf(v).join(' | '), gmaps(v.in.lat, v.in.lng)].map(q).join(';'); });
   download(`kunjungan-${S.date}${S.staffFilter ? '-' + S.staffFilter : ''}.csv`, '\ufeff' + [head.map(q).join(';'), ...rows].join('\r\n'), 'text/csv;charset=utf-8');
   toast('File CSV diunduh. Buka dengan Excel.');
+}
+
+/* ---------- laporan periode untuk atasan ---------- */
+let PERIOD = null;
+async function buildPeriod(btn) {
+  const { from, to } = S.rp;
+  if (!from || !to || from > to) return toast('Rentang tanggal tidak valid.', 'bad');
+  const days = (new Date(to) - new Date(from)) / 864e5 + 1;
+  if (days > 186) return toast('Rentang maksimal 6 bulan per laporan.', 'bad');
+  btn.disabled = true; btn.textContent = 'Mengambil data…';
+  try {
+    const snap = await S.db.collection(C.vis).where('date', '>=', from).where('date', '<=', to).get();
+    let vs = snap.docs.map(x => ({ id: x.id, ...x.data() }));
+    if (S.rp.staff) vs = vs.filter(v => v.username === S.rp.staff);
+    vs.sort((a, b) => (ptTime(a.in) || 0) - (ptTime(b.in) || 0));
+    PERIOD = { ...S.rp, vs, made: new Date() };
+    const pr = $('#printRoot');
+    pr.innerHTML = `<div class="pr-bar"><button class="btn sm" data-act="closePrint">✕ Tutup</button><h2>Laporan periode ${esc(fmtShort(from))} – ${esc(fmtShort(to))}</h2>
+      <button class="btn sm" data-act="dlPeriod">${ICON.dl}Unduh (HTML)</button><button class="btn primary sm" data-act="doPrint">${ICON.print}Cetak / Simpan PDF</button></div><div class="pr-page">${periodHTML(PERIOD)}</div>`;
+    pr.hidden = false; pr.scrollTop = 0; document.body.style.overflow = 'hidden';
+    toast('Untuk PDF: tekan Cetak, lalu pilih "Simpan sebagai PDF".');
+  } catch (e) { toast(errMsg(e), 'bad'); }
+  btn.disabled = false; btn.innerHTML = `${ICON.doc}Susun laporan`;
+}
+const fmtShort = ds => { const [y, m, d] = ds.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }); };
+const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '–';
+function periodHTML(P) {
+  const vs = P.vs, done = vs.filter(v => v.status === 'selesai');
+  const withLoc = vs.filter(v => v.in?.inside != null), inside = withLoc.filter(v => v.in.inside === true);
+  const signed = done.filter(v => v.out?.hasSignature || v.out?.signature);
+  const durs = done.map(v => ptTime(v.out) - ptTime(v.in)).filter(x => x > 0);
+  const avgDur = durs.length ? durs.reduce((a, b) => a + b, 0) / durs.length : null;
+  const flagged = vs.map(v => ({ v, f: flagsOf(v, vs) })).filter(x => x.f.length);
+  const custSet = new Set(vs.map(v => (v.customerId || v.customerName.toLowerCase())));
+  const staffSet = new Set(vs.map(v => v.username));
+  // per hari / per minggu
+  const d0 = new Date(P.from), d1 = new Date(P.to), nDays = Math.round((d1 - d0) / 864e5) + 1, weekly = nDays > 45;
+  const buckets = [];
+  for (let i = 0; i < nDays; i += weekly ? 7 : 1) { const a = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i), b = new Date(a.getFullYear(), a.getMonth(), a.getDate() + (weekly ? 6 : 0)); buckets.push({ a: dstr(a), b: dstr(b > d1 ? d1 : b), n: 0 }); }
+  vs.forEach(v => { const bk = buckets.find(x => v.date >= x.a && v.date <= x.b); if (bk) bk.n++; });
+  const maxN = Math.max(1, ...buckets.map(x => x.n)), W = 680, H = 170, bw = W / buckets.length;
+  const chart = `<svg viewBox="0 0 ${W} ${H + 28}" width="100%" role="img" aria-label="Jumlah kunjungan ${weekly ? 'per minggu' : 'per hari'}" style="display:block;max-width:100%">
+    <line x1="0" y1="${H}" x2="${W}" y2="${H}" stroke="#999" stroke-width="1"/>
+    ${buckets.map((x, i) => { const h = x.n / maxN * (H - 20); const lb = weekly ? fmtShort(x.a).replace(/ \d{4}$/, '') : x.a.slice(8); const showLb = weekly || buckets.length <= 16 || i % Math.ceil(buckets.length / 16) === 0;
+      return `<rect x="${i * bw + bw * .15}" y="${H - h}" width="${bw * .7}" height="${h}" fill="#1D3F8F" rx="2"/>${x.n ? `<text x="${i * bw + bw / 2}" y="${H - h - 4}" font-size="10" text-anchor="middle" fill="#333">${x.n}</text>` : ''}${showLb ? `<text x="${i * bw + bw / 2}" y="${H + 16}" font-size="10" text-anchor="middle" fill="#555">${esc(lb)}</text>` : ''}`; }).join('')}
+  </svg>`;
+  // per petugas
+  const byStaff = [...staffSet].map(u => { const a = vs.filter(v => v.username === u), dn = a.filter(v => v.status === 'selesai'), wl = a.filter(v => v.in?.inside != null);
+    const ds = dn.map(v => ptTime(v.out) - ptTime(v.in)).filter(x => x > 0);
+    return { name: a[0].staffName, n: a.length, done: dn.length, cust: new Set(a.map(v => v.customerId || v.customerName.toLowerCase())).size,
+      inside: pct(wl.filter(v => v.in.inside).length, wl.length), sign: pct(dn.filter(v => v.out?.hasSignature || v.out?.signature).length, dn.length),
+      dur: ds.length ? fmtDur(ds.reduce((x, y) => x + y, 0) / ds.length) : '–', fl: a.filter(v => flagsOf(v, vs).length).length }; }).sort((a, b) => b.n - a.n);
+  // per customer
+  const cm = {}; vs.forEach(v => { const k = v.customerId || v.customerName.toLowerCase(); (cm[k] = cm[k] || { name: v.customerName, n: 0, staff: new Set(), last: '' }); cm[k].n++; cm[k].staff.add(v.staffName); if (v.date > cm[k].last) cm[k].last = v.date; });
+  const byCust = Object.values(cm).sort((a, b) => b.n - a.n);
+  const pm = {}; vs.forEach(v => { pm[v.purpose || 'Lainnya'] = (pm[v.purpose || 'Lainnya'] || 0) + 1; });
+  const kpi = [[vs.length, 'Total kunjungan'], [custSet.size, 'Customer dikunjungi'], [staffSet.size, 'Petugas aktif'], [avgDur ? fmtDur(avgDur) : '–', 'Rata-rata durasi'],
+    [pct(inside.length, withLoc.length), 'Check-in di lokasi'], [pct(signed.length, done.length), 'Bertanda tangan PIC'], [pct(done.length, vs.length), 'Selesai (check-out)'], [flagged.length, 'Kunjungan berperingatan']];
+  return `<div class="rpt">
+    <div class="rpt-h"><div><h1>Laporan Kunjungan Lapangan</h1><p>${esc(S.settings.officeName || '')}${S.settings.address ? '<br>' + esc(S.settings.address) : ''}</p></div>
+      <div class="rpt-meta"><b>Periode</b><span>${esc(fmtShort(P.from))} s.d. ${esc(fmtShort(P.to))}</span><b>Petugas</b><span>${P.staff ? esc(nameOf(P.staff)) : 'Semua petugas'}</span>${P.boss ? `<b>Kepada</b><span>${esc(P.boss)}</span>` : ''}<b>Disusun oleh</b><span>${esc(me().name)}</span><b>Tanggal susun</b><span>${esc(fmtStamp(P.made))}</span></div></div>
+    <h2>Ringkasan</h2>
+    <div class="rpt-sum" style="grid-template-columns:repeat(4,1fr)">${kpi.map(([v, l]) => `<div><b>${esc(String(v))}</b><span>${l}</span></div>`).join('')}</div>
+    <h2>Jumlah kunjungan ${weekly ? 'per minggu' : 'per hari'}</h2>${chart}
+    <h2>Kinerja per petugas</h2>
+    ${byStaff.length ? `<table><thead><tr><th>Petugas</th><th>Kunjungan</th><th>Selesai</th><th>Customer</th><th>Check-in di lokasi</th><th>TTD PIC</th><th>Rata-rata durasi</th><th>Berperingatan</th></tr></thead><tbody>
+      ${byStaff.map(x => `<tr><td><b>${esc(x.name)}</b></td><td>${x.n}</td><td>${x.done}</td><td>${x.cust}</td><td>${x.inside}</td><td>${x.sign}</td><td>${x.dur}</td><td class="${x.fl ? 'bad' : ''}">${x.fl}</td></tr>`).join('')}</tbody></table>` : '<p>Tidak ada kunjungan pada periode ini.</p>'}
+    ${byCust.length ? `<h2>Rekap per customer</h2><table><thead><tr><th>Customer</th><th>Kunjungan</th><th>Petugas</th><th>Terakhir dikunjungi</th></tr></thead><tbody>
+      ${byCust.slice(0, 25).map(c => `<tr><td>${esc(c.name)}</td><td>${c.n}</td><td>${esc([...c.staff].join(', '))}</td><td>${esc(fmtShort(c.last))}</td></tr>`).join('')}</tbody></table>${byCust.length > 25 ? `<p style="font-size:11px;color:#666">Menampilkan 25 dari ${byCust.length} customer dengan kunjungan terbanyak.</p>` : ''}` : ''}
+    ${vs.length ? `<h2>Keperluan kunjungan</h2><table><thead><tr><th>Keperluan</th><th>Jumlah</th><th>Porsi</th></tr></thead><tbody>${Object.entries(pm).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr><td>${esc(k)}</td><td>${n}</td><td>${pct(n, vs.length)}</td></tr>`).join('')}</tbody></table>` : ''}
+    <h2>Temuan kepatuhan (${flagged.length})</h2>
+    ${flagged.length ? `<table><thead><tr><th>Tanggal</th><th>Petugas</th><th>Customer</th><th>Temuan</th></tr></thead><tbody>
+      ${flagged.slice(0, 60).map(({ v, f }) => `<tr><td>${esc(fmtShort(v.date))} ${fmtTime(ptTime(v.in))}</td><td>${esc(v.staffName)}</td><td>${esc(v.customerName)}</td><td class="bad">${f.map(esc).join('<br>')}</td></tr>`).join('')}</tbody></table>` : '<p>Tidak ada temuan pada periode ini.</p>'}
+    <h2>Catatan manager</h2>
+    <p style="white-space:pre-wrap;border:1px solid #ccc;border-radius:6px;padding:10px;min-height:50px">${esc(P.note || '–')}</p>
+    <h2>Persetujuan</h2>
+    <table><tbody><tr><td style="width:50%">Keputusan atasan:<br><br>☐ Disetujui &nbsp;&nbsp;&nbsp; ☐ Perlu revisi</td><td>Catatan atasan:<br><br><br></td></tr></tbody></table>
+    <div class="rpt-sign"><div>Disusun oleh,<div class="ln">${esc(me().name)}</div>Manager</div><div>Diperiksa dan disetujui oleh,<div class="ln">${P.boss ? esc(P.boss) : '(..............................)'}</div>Tanggal: ....................</div></div>
+    <p class="rpt-foot">Laporan disusun otomatis dari sistem Kunjungan Lapangan. Waktu berdasarkan server, lokasi dari GPS perangkat petugas. Rincian kunjungan beserta foto dapat dilihat di menu Pemantauan.</p></div>`;
 }
 
 init();

@@ -4,7 +4,7 @@ Aplikasi ini memakai **project Firebase sendiri** (`field-app`), terpisah dari a
 
 ## Langkah 1: Rules Firestore
 
-Rules di project **field-app** sudah dipasang. Isinya sama dengan file `firestore.rules` di folder ini. Jika suatu saat perlu dipasang ulang, buka Firestore, tab **Rules**, tempel isi file tersebut, lalu klik **Publish**.
+Buka project **field-app**, lalu Firestore, tab **Rules**. Tempel isi file `firestore.rules` di folder ini, lalu klik **Publish**. Rules terbaru mencakup koleksi `fv_photos` (tempat foto, selfie, dan tanda tangan disimpan terpisah agar laporan periode ringan dimuat).
 
 ## Langkah 2: Unggah ke GitHub (repository baru)
 
@@ -51,3 +51,11 @@ Rules di project **field-app** sudah dipasang. Isinya sama dengan file `firestor
 - Posisi dicatat **saat check-in dan check-out**, bukan dilacak terus-menerus sepanjang hari. Aplikasi web tidak bisa membaca lokasi di latar belakang ketika aplikasi ditutup.
 - Aplikasi web tidak dapat mendeteksi aplikasi **fake GPS**. Foto bukti bercap koordinat dan tanda "di luar radius" membantu manager memeriksa kejanggalan.
 - Jika tidak ada sinyal saat check-in, data tersimpan di HP dan terkirim otomatis saat sinyal kembali. Waktu server lalu mengikuti saat data terkirim, sehingga kunjungan itu diberi tanda selisih waktu.
+
+## Laporan periode untuk atasan
+
+Menu **Laporan periode** (khusus manager):
+1. Pilih rentang tanggal (atau tombol cepat: Bulan ini, Bulan lalu, 7 hari, 30 hari) dan petugas.
+2. Isi nama atasan yang dituju dan catatan manager.
+3. Tekan **Susun laporan**. Sistem menghitung ringkasan, tren kunjungan, kinerja per petugas, rekap customer, keperluan, dan temuan kepatuhan.
+4. Tekan **Cetak / Simpan PDF**, pilih printer **Simpan sebagai PDF**, lalu kirim PDF ke atasan untuk ditandatangani. Bisa juga **Unduh (HTML)**.
