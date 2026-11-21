@@ -378,6 +378,12 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
 .chip.go{background:var(--wait-bg);color:var(--wait)}
 .coord-help{font-size:12.5px;color:var(--ink-2)}
 .ph.single{aspect-ratio:3/4}
+.rep.wide{grid-template-columns:minmax(270px,390px) 1fr}
+.rep-photos.three{grid-template-columns:1fr 1fr 1fr}
+@media (max-width:640px){.rep.wide{grid-template-columns:1fr}}
+.sigpad{width:100%;height:200px;border:2px dashed var(--brand);border-radius:12px;background:#fff;touch-action:none;display:block;cursor:crosshair}
+.touch .sigpad{height:230px}
+.sig-img{max-width:240px;width:100%;max-height:110px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff;display:block;margin-bottom:4px}
 .rep .ph span{bottom:auto;top:6px}
 #map,.minimap{position:relative;z-index:0;isolation:isolate}
 #modal{z-index:2000}#printRoot{z-index:2100}#toast{z-index:2200}
@@ -426,7 +432,9 @@ const RPT_CSS = `
 .rpt .ok{color:#1d6a43;font-weight:700}.rpt .bad{color:#a33421;font-weight:700}.rpt .go{color:#9a5a00;font-weight:700}
 .rpt-photos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .rpt-photos figure{margin:0;border:1px solid #ccc;border-radius:6px;padding:6px;break-inside:avoid;page-break-inside:avoid}
-.rpt-photos .pair{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.rpt-photos .pair{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.rpt td img.sg{height:40px;display:block;margin-top:3px;border:1px solid #ddd;background:#fff}
+.rpt .fl{color:#a33421;font-size:10.5px;margin-top:3px}
 .rpt-photos .pair div{aspect-ratio:3/4;background:#f1f1f1;display:flex;align-items:center;justify-content:center;font-size:10px;color:#777;overflow:hidden}
 .rpt-photos img{width:100%;height:100%;object-fit:cover;display:block}
 .rpt-photos figcaption{font-size:10.5px;margin-top:5px}
@@ -495,6 +503,8 @@ const ICON = {
   users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .7 3.2 2.5 3.6 5.2"/></svg>',
   gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',
   hist:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
+  face:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c.9 1.2 2.1 1.8 3.5 1.8s2.6-.6 3.5-1.8"/><path d="M9 9.5h.01M15 9.5h.01"/></svg>',
+  sign:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c3-1 4-6 6-6s1 5 3 5 2-3 4-3 2 2 5 2"/><path d="M3 21h18"/></svg>',
   user:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>'
 };
 const chip = (t, c) => `<span class="chip ${c}">${esc(t)}</span>`;
@@ -690,28 +700,46 @@ function flagsOf(v) {
     if (p.acc > 100) f.push(`Akurasi GPS ${l} rendah (±${p.acc} m)`);
     const sv = tsDate(p.server);
     if (sv) { const diff = Math.abs(sv - new Date(p.device)) / 60000; if (diff > 5) f.push(`Waktu ${l} di HP selisih ${Math.round(diff)} menit dari waktu server (dikirim tanpa sinyal, atau jam HP tidak sesuai)`); }
+    if ((p.samples || 0) >= 5 && (p.jitter || 0) < 1) f.push(`Koordinat ${l} tidak bergeser sama sekali selama ${p.samples} pembacaan GPS (indikasi lokasi palsu, perlu dicek)`);
+    if (p.dist != null && p.dist <= 2) f.push(`Titik ${l} tepat di titik customer (${p.dist} m), tidak wajar untuk GPS asli (perlu dicek)`);
   }
+  const age = (x, l) => { if (x > 120) f.push(`${l} bukan diambil langsung dari kamera (file dibuat ${Math.round(x / 60)} menit sebelumnya)`); };
+  age(v.in?.photoAge, 'Foto lokasi'); age(v.in?.selfieAge, 'Selfie'); age(v.out?.photoAge, 'Foto selesai');
+  if (v.out && v.out.noSign) f.push(`Tanpa tanda tangan PIC: ${v.out.noSign}`);
+  const tr = travelFlag(v); if (tr) f.push(tr);
   return f;
+}
+function travelFlag(v) {
+  const t1 = ptTime(v.in); if (!t1 || !v.in) return null;
+  let prev = null, pt = null;
+  for (const o of S.visits) {
+    if (o.id === v.id || o.username !== v.username) continue;
+    for (const k of ['in', 'out']) { const p = o[k]; if (!p || typeof p.lat !== 'number') continue; const t = ptTime(p); if (t && t < t1 && (!pt || t > pt)) { pt = t; prev = p; } }
+  }
+  if (!prev) return null;
+  const km = haversine(prev, v.in) / 1000, h = (t1 - pt) / 3600000;
+  if (km > 2 && km / Math.max(h, 1 / 60) > 100) return `Perpindahan tidak wajar: ${km.toFixed(1).replace('.', ',')} km dalam ${Math.max(1, Math.round(h * 60))} menit dari titik sebelumnya`;
+  return null;
 }
 function locChip(p) { return p.inside === true ? chip('Di lokasi', 'ok') : p.inside === false ? chip('Di luar radius', 'bad') : chip('Titik customer belum ada', 'idle'); }
 function ptLine(p) {
   return `${fmtTimeS(ptTime(p))} <span class="muted">±${p.acc} m${p.dist != null ? `, ${fmtDist(p.dist)} dari customer` : ''}</span> <a href="${gmaps(p.lat, p.lng)}" target="_blank" rel="noopener">Lihat peta</a>`;
 }
-function photoBtn(v, k) {
-  const p = v[k]; const label = k === 'in' ? 'Check-in' : 'Check-out';
-  return p?.photo ? `<button class="ph" data-act="zoom" data-id="${esc(v.id)}" data-k="${k}" aria-label="Perbesar foto ${label}"><img src="${esc(p.photo)}" alt="Foto ${label} ${esc(v.customerName)}" loading="lazy"><span>${label}</span></button>`
-    : `<div class="ph none"><span>${p ? 'Tanpa foto ' : 'Belum '}${label.toLowerCase()}</span></div>`;
+function thumb(v, k, src, label, missing) {
+  return src ? `<button class="ph" data-act="zoom" data-id="${esc(v.id)}" data-k="${k}" aria-label="Perbesar ${label}"><img src="${esc(src)}" alt="${label} ${esc(v.customerName)}" loading="lazy"><span>${label}</span></button>`
+    : `<div class="ph none"><span>${missing}</span></div>`;
 }
 function visitCard(v, mgr) {
   const tin = ptTime(v.in), tout = v.out ? ptTime(v.out) : null;
   const dur = tout ? tout - tin : Date.now() - tin;
-  const fl = flagsOf(v), cust = custOf(v);
+  const fl = mgr ? flagsOf(v) : [], cust = custOf(v);
   const canSetLoc = mgr && v.in && (!cust || !hasLoc(cust));
-  return `<article class="rep" id="v-${esc(v.id)}">
-    <div class="rep-photos">${photoBtn(v, 'in')}${photoBtn(v, 'out')}</div>
+  const sig = v.out ? (v.out.signature ? `<img class="sig-img" src="${esc(v.out.signature)}" alt="Tanda tangan PIC">PIC: <b>${esc(v.out.picName || '–')}</b>` : v.out.noSign ? `<span class="muted">Tidak ada (${esc(v.out.noSign)})</span>` : '–') : '<span class="muted">Saat check-out</span>';
+  return `<article class="rep wide" id="v-${esc(v.id)}">
+    <div class="rep-photos three">${thumb(v, 'in', v.in?.photo, 'Lokasi', 'Tanpa foto lokasi')}${thumb(v, 'selfie', v.in?.selfie, 'Selfie', 'Tanpa selfie')}${thumb(v, 'out', v.out?.photo, 'Selesai', v.out ? 'Tanpa foto selesai' : 'Belum check-out')}</div>
     <div class="rep-body">
       <div class="rep-head"><div><h3>${esc(v.customerName)}</h3>${v.customerAddress ? `<p class="meta">${esc(v.customerAddress)}</p>` : ''}</div>
-        <div style="display:grid;gap:4px;justify-items:end">${v.status === 'selesai' ? chip('Selesai', 'ok') : chip('Sedang berkunjung', 'go')}${locChip(v.in)}</div></div>
+        <div style="display:grid;gap:4px;justify-items:end">${v.status === 'selesai' ? chip('Selesai', 'ok') : chip('Sedang berkunjung', 'go')}${locChip(v.in)}${fl.length ? chip(`${fl.length} peringatan`, 'bad') : ''}</div></div>
       <dl class="kv">
         ${mgr ? `<dt>Petugas</dt><dd><b>${esc(v.staffName)}</b></dd>` : ''}
         <dt>Check-in</dt><dd>${ptLine(v.in)}</dd>
@@ -720,6 +748,7 @@ function visitCard(v, mgr) {
         <dt>Keperluan</dt><dd>${esc(v.purpose || '–')}</dd>
         ${v.note ? `<dt>Catatan</dt><dd>${esc(v.note)}</dd>` : ''}
         ${v.out?.result ? `<dt>Hasil</dt><dd>${esc(v.out.result)}</dd>` : ''}
+        <dt>Tanda tangan</dt><dd>${sig}</dd>
       </dl>
       ${fl.length ? `<ul class="flags">${fl.map(t => `<li>⚠ ${esc(t)}</li>`).join('')}</ul>` : ''}
       ${mgr ? `<div class="acts">
@@ -866,12 +895,14 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('#p
 /* ---------- GPS ---------- */
 function acquireGPS(onUpdate) {
   if (!navigator.geolocation) { onUpdate({ error: 'Perangkat atau browser ini tidak mendukung GPS.' }); return () => {}; }
-  let best = null, done = false; const t0 = Date.now();
-  const finish = () => { if (done) return; done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm); if (best) onUpdate({ fix: best, done: true }); };
+  let best = null, first = null, n = 0, jit = 0, done = false; const t0 = Date.now();
+  const pack = () => best && { ...best, samples: n, jitter: Math.round(jit * 10) / 10 };
+  const finish = () => { if (done) return; done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm); if (best) onUpdate({ fix: pack(), done: true }); };
   const id = navigator.geolocation.watchPosition(p => {
     const c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.max(1, Math.round(p.coords.accuracy)), at: new Date(p.timestamp).toISOString() };
+    n++; if (!first) first = c; else jit = Math.max(jit, haversine(first, c));
     if (!best || c.acc <= best.acc) best = c;
-    if (best.acc <= 20 || Date.now() - t0 > 20000) finish(); else onUpdate({ fix: best, done: false });
+    if ((best.acc <= 20 && n >= 4) || Date.now() - t0 > 20000) finish(); else onUpdate({ fix: pack(), done: false });
   }, e => {
     if (best) return finish();
     done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm);
@@ -898,16 +929,39 @@ async function toCanvas(file, max, lines) {
     return c;
   } finally { URL.revokeObjectURL(url); }
 }
-async function storePhoto(file, lines) {
-  let max = 1100, q = 0.68, d = '';
-  for (let i = 0; i < 6; i++) { const c = await toCanvas(file, max, lines); d = c.toDataURL('image/jpeg', q); if (d.length < 180000) return d; max = Math.round(max * 0.82); q = Math.max(0.4, q - 0.05); }
+async function storePhoto(file, lines, max0, limit) {
+  let max = max0 || 1100, q = 0.68, d = ''; limit = limit || 180000;
+  for (let i = 0; i < 6; i++) { const c = await toCanvas(file, max, lines); d = c.toDataURL('image/jpeg', q); if (d.length < limit) return d; max = Math.round(max * 0.82); q = Math.max(0.4, q - 0.05); }
   return d;
 }
-function slotHTML(src) {
-  if (!src) return `<label class="cam"><input type="file" accept="image/*" capture="environment" data-ph="1" class="sr">${ICON.cam}<span>Ambil foto di lokasi</span><small>Foto tampak depan lokasi, papan nama, atau pekerjaan</small></label>
-    <label class="gal"><input type="file" accept="image/*" data-ph="1" class="sr">atau pilih dari galeri</label>`;
-  return `<div class="shot"><img src="${esc(src)}" alt="Foto bukti"><span class="shot-ok">✓ Foto siap</span></div>
-    <div class="shot-acts"><label class="btn"><input type="file" accept="image/*" capture="environment" data-ph="1" class="sr">${ICON.cam}Foto ulang</label><label class="btn"><input type="file" accept="image/*" data-ph="1" class="sr">Dari galeri</label></div>`;
+const SLOT = {
+  loc: { label: 'Ambil foto lokasi', hint: 'Tampak depan lokasi, papan nama, atau pekerjaan', cap: 'environment' },
+  selfie: { label: 'Ambil selfie', hint: 'Wajah Anda dengan latar lokasi customer (kamera depan)', cap: 'user' },
+  out: { label: 'Ambil foto hasil', hint: 'Opsional: hasil pekerjaan saat selesai', cap: 'environment' }
+};
+function slotHTML(kind, src) {
+  const s = SLOT[kind];
+  if (!src) return `<label class="cam"><input type="file" accept="image/*" capture="${s.cap}" data-ph="${kind}" class="sr">${kind === 'selfie' ? ICON.face : ICON.cam}<span>${s.label}</span><small>${s.hint}</small></label>`;
+  return `<div class="shot"><img src="${esc(src)}" alt="${s.label}"><span class="shot-ok">✓ Foto siap</span></div>
+    <div class="shot-acts"><label class="btn"><input type="file" accept="image/*" capture="${s.cap}" data-ph="${kind}" class="sr">${ICON.cam}Foto ulang</label></div>`;
+}
+function initSig() {
+  const c = $('#sig'); if (!c || !G) return;
+  const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+  const g = c.getContext('2d'); g.scale(dpr, dpr); g.fillStyle = '#fff'; g.fillRect(0, 0, r.width, r.height);
+  g.lineWidth = 2.6; g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#111';
+  let drawing = false, last = null; G.sigDirty = false;
+  const pos = e => { const b = c.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
+  c.onpointerdown = e => { drawing = true; last = pos(e); try { c.setPointerCapture(e.pointerId); } catch (x) {} e.preventDefault(); };
+  c.onpointermove = e => { if (!drawing) return; const p = pos(e); g.beginPath(); g.moveTo(last.x, last.y); g.lineTo(p.x, p.y); g.stroke(); last = p; G.sigDirty = true; e.preventDefault(); };
+  c.onpointerup = c.onpointercancel = () => { drawing = false; };
+}
+function sigData() {
+  const c = $('#sig'); const w = 600, h = Math.round(600 * c.height / c.width);
+  const t = document.createElement('canvas'); t.width = w; t.height = h; const g = t.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(c, 0, 0, w, h);
+  return t.toDataURL('image/jpeg', 0.75);
 }
 
 /* ---------- check-in / check-out ---------- */
@@ -922,24 +976,30 @@ function openCheck(mode, id) {
   const v = mode === 'out' ? (S.active.find(x => x.id === id) || S.visits.find(x => x.id === id)) : null;
   if (mode === 'out' && !v) return;
   closeModal();
-  G = { mode, v, fix: null, err: null, done: false, photo: null, stop: null };
+  G = { mode, v, fix: null, err: null, done: false, photos: {}, ages: {}, stop: null, sigDirty: false };
   const custs = S.customers.filter(c => c.active !== false);
   const gpsStep = `<div id="gpsBox"></div><div id="miniMap" class="minimap"></div>`;
   const body = mode === 'in'
     ? step(1, 'Pilih customer', `<select id="ck-cust" name="cust" data-change="ckcust"><option value="">Pilih customer…</option>${custs.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}<option value="__new">+ Customer belum terdaftar</option></select>
         <div id="ck-new" hidden style="margin-top:10px"><div class="field"><label for="ck-nn">Nama customer</label><input id="ck-nn" type="text" name="newName"></div><div class="field" style="margin:0"><label for="ck-na">Alamat (opsional)</label><input id="ck-na" type="text" name="newAddr"></div></div>`)
       + step(2, 'Lokasi GPS Anda', gpsStep)
-      + step(3, 'Foto bukti di lokasi', `<div id="slot">${slotHTML(null)}</div>`)
-      + step(4, 'Keperluan', `<select name="purpose">${PURPOSES.map(p => `<option>${p}</option>`).join('')}</select><textarea name="note" style="margin-top:10px" placeholder="Catatan (opsional), contoh: bertemu Pak Andi, bagian gudang"></textarea>`)
+      + step(3, 'Foto lokasi', `<div id="slot-loc">${slotHTML('loc', null)}</div>`)
+      + step(4, 'Selfie di lokasi', `<div id="slot-selfie">${slotHTML('selfie', null)}</div>`)
+      + step(5, 'Keperluan', `<select name="purpose">${PURPOSES.map(p => `<option>${p}</option>`).join('')}</select><textarea name="note" style="margin-top:10px" placeholder="Catatan (opsional), contoh: bertemu Pak Andi, bagian gudang"></textarea>`)
     : `<div class="gps" style="margin-bottom:18px"><b style="font-size:16px">${esc(v.customerName)}</b><span class="muted">Check-in ${fmtTime(ptTime(v.in))}, sudah ${fmtDur(Date.now() - ptTime(v.in))}</span></div>`
       + step(1, 'Lokasi GPS Anda', gpsStep)
-      + step(2, 'Foto saat selesai (opsional)', `<div id="slot">${slotHTML(null)}</div>`)
-      + step(3, 'Hasil kunjungan', `<textarea name="result" required placeholder="Contoh: unit sudah diperbaiki dan dites, customer tanda tangan berita acara"></textarea>`);
+      + step(2, 'Foto hasil (opsional)', `<div id="slot-out">${slotHTML('out', null)}</div>`)
+      + step(3, 'Tanda tangan PIC customer', `<div class="field"><label for="ck-pic">Nama PIC customer</label><input id="ck-pic" type="text" name="picName" placeholder="Nama orang yang ditemui"></div>
+          <div id="sig-wrap"><canvas id="sig" class="sigpad" aria-label="Kotak tanda tangan"></canvas>
+          <span class="row" style="justify-content:space-between;margin-top:4px"><span class="muted" style="font-size:12.5px">Minta PIC tanda tangan dengan jari di kotak di atas.</span><button type="button" class="linkbtn" data-act="sigClear">Ulangi</button></span></div>
+          <label class="checkrow" style="margin-top:8px"><input type="checkbox" name="noSign" data-change="nosign"><span>PIC tidak ada di tempat atau tidak bersedia tanda tangan</span></label>
+          <div id="nosign-box" hidden><textarea name="noSignReason" placeholder="Jelaskan alasannya, contoh: PIC sedang rapat, dititipkan ke satpam"></textarea></div>`)
+      + step(4, 'Hasil kunjungan', `<textarea name="result" required placeholder="Contoh: unit sudah diperbaiki dan dites, customer menerima pekerjaan"></textarea>`);
   openModal(`${sheetHead(mode === 'in' ? 'Check-in kunjungan' : 'Check-out kunjungan')}
     <form data-form="check"><div class="sheet-b">${body}
-      <p class="muted" style="font-size:12.5px;margin:0">Waktu dicatat dari server. Foto diberi cap waktu, koordinat, dan nama Anda secara otomatis.</p></div>
+      <p class="muted" style="font-size:12.5px;margin:0">Foto hanya bisa diambil langsung dari kamera. Waktu dicatat dari server, dan foto diberi cap waktu, koordinat, serta nama Anda.</p></div>
     <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit" id="ck-submit">${mode === 'in' ? 'Check-in sekarang' : 'Check-out sekarang'}</button></div></form>`);
-  startGPS(); setTimeout(initMini, 60);
+  startGPS(); setTimeout(() => { initMini(); initSig(); }, 60);
 }
 function startGPS() {
   if (!G) return; if (G.stop) G.stop();
@@ -985,10 +1045,13 @@ async function saveSoon(p) {
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.ph && G) {
-    const f = t.files && t.files[0]; if (!f) return;
+    const f = t.files && t.files[0], kind = t.dataset.ph; if (!f) return;
     if (f.type && !/^image\//.test(f.type)) { toast('File harus berupa foto.', 'bad'); return; }
-    G.photo = f; $('#slot').innerHTML = slotHTML(URL.createObjectURL(f));
+    const age = Math.max(0, Math.round((Date.now() - (f.lastModified || Date.now())) / 1000));
+    if (age > 120 && !window.DEMO) { toast('Foto harus diambil langsung dengan kamera saat ini. Foto lama atau dari galeri tidak diterima.', 'bad'); return; }
+    G.photos[kind] = f; G.ages[kind] = age; $('#slot-' + kind).innerHTML = slotHTML(kind, URL.createObjectURL(f));
   }
+  if (t.dataset.change === 'nosign') { $('#nosign-box').hidden = !t.checked; $('#sig-wrap').style.opacity = t.checked ? .35 : 1; $('#sig-wrap').style.pointerEvents = t.checked ? 'none' : ''; }
   if (t.dataset.change === 'ckcust') { $('#ck-new').hidden = t.value !== '__new'; renderGPS(); }
   if (t.dataset.change === 'date') { setDate(t.value || today()); t.blur(); }
   if (t.dataset.change === 'staff') { S.staffFilter = t.value; mapFit = true; t.blur(); renderContent(); updateMap(); }
@@ -1034,37 +1097,47 @@ const FORMS = {
     if (!G) return;
     const fd = new FormData(f), now = new Date(), fx = G.fix;
     if (!fx) return toast('Lokasi GPS belum didapat. Tunggu sebentar atau tekan Perbarui lokasi.', 'bad');
+    const gpsMeta = { lat: fx.lat, lng: fx.lng, acc: fx.acc, gpsAt: fx.at, samples: fx.samples || 1, jitter: fx.jitter || 0 };
     if (G.mode === 'in') {
       const cid = fd.get('cust'); if (!cid) return toast('Pilih customer terlebih dulu.', 'bad');
       let cust = null, name, addr;
       if (cid === '__new') { name = (fd.get('newName') || '').trim(); addr = (fd.get('newAddr') || '').trim(); if (!name) return toast('Isi nama customer.', 'bad'); }
       else { cust = S.customers.find(c => c.id === cid); name = cust.name; addr = cust.address || ''; }
-      if (!G.photo) return toast('Foto bukti di lokasi wajib diambil.', 'bad');
+      if (!G.photos.loc) return toast('Foto lokasi wajib diambil.', 'bad');
+      if (!G.photos.selfie) return toast('Selfie di lokasi wajib diambil.', 'bad');
       const r = cust && hasLoc(cust) ? (cust.radius || defRadius()) : null;
       const dist = r != null ? Math.round(haversine(fx, cust)) : null;
+      const st = t => [`${t}  ${name}`, `${fmtStamp(now)}  |  ${fx.lat.toFixed(6)}, ${fx.lng.toFixed(6)} ±${fx.acc}m  |  ${me().name}`];
       busy(f, true, 'Memproses foto…');
       try {
-        const photo = await storePhoto(G.photo, [`CHECK-IN  ${name}`, `${fmtStamp(now)}  |  ${fx.lat.toFixed(6)}, ${fx.lng.toFixed(6)} ±${fx.acc}m  |  ${me().name}`]);
+        const photo = await storePhoto(G.photos.loc, st('CHECK-IN'));
+        const selfie = await storePhoto(G.photos.selfie, st('SELFIE'), 720, 100000);
         busy(f, true, 'Mengirim…');
         const ref = S.db.collection(C.vis).doc();
         const ok = await saveSoon(ref.set({
           date: dstr(now), username: S.me, staffName: me().name, customerId: cust ? cust.id : null, customerName: name, customerAddress: addr,
           purpose: fd.get('purpose') || '', note: (fd.get('note') || '').trim(), status: 'berlangsung',
-          in: { device: now.toISOString(), server: SERVER(), lat: fx.lat, lng: fx.lng, acc: fx.acc, gpsAt: fx.at, dist, radius: r, inside: r == null ? null : dist <= r, photo },
+          in: { device: now.toISOString(), server: SERVER(), ...gpsMeta, dist, radius: r, inside: r == null ? null : dist <= r, photo, selfie, photoAge: G.ages.loc ?? null, selfieAge: G.ages.selfie ?? null },
           out: null
         }));
         closeModal(); toast(ok ? `Check-in di ${name} tercatat.` : 'Sinyal lemah: check-in tersimpan di HP dan terkirim otomatis saat ada sinyal.');
       } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
     } else {
-      const result = (fd.get('result') || '').trim(); if (!result) return toast('Isi hasil kunjungan.', 'bad');
+      const result = (fd.get('result') || '').trim();
+      const noSign = fd.get('noSign') === 'on', reason = (fd.get('noSignReason') || '').trim(), pic = (fd.get('picName') || '').trim();
+      if (!noSign && !pic) return toast('Isi nama PIC customer.', 'bad');
+      if (!noSign && !G.sigDirty) return toast('Minta PIC customer tanda tangan di kotak tanda tangan.', 'bad');
+      if (noSign && !reason) return toast('Isi alasan tidak ada tanda tangan PIC.', 'bad');
+      if (!result) return toast('Isi hasil kunjungan.', 'bad');
       const v = G.v, cust = custOf(v);
       const r = cust && hasLoc(cust) ? (cust.radius || defRadius()) : null;
       const dist = r != null ? Math.round(haversine(fx, cust)) : null;
-      busy(f, true, G.photo ? 'Memproses foto…' : 'Mengirim…');
+      busy(f, true, G.photos.out ? 'Memproses foto…' : 'Mengirim…');
       try {
-        const photo = G.photo ? await storePhoto(G.photo, [`CHECK-OUT  ${v.customerName}`, `${fmtStamp(now)}  |  ${fx.lat.toFixed(6)}, ${fx.lng.toFixed(6)} ±${fx.acc}m  |  ${me().name}`]) : null;
+        const photo = G.photos.out ? await storePhoto(G.photos.out, [`CHECK-OUT  ${v.customerName}`, `${fmtStamp(now)}  |  ${fx.lat.toFixed(6)}, ${fx.lng.toFixed(6)} ±${fx.acc}m  |  ${me().name}`]) : null;
+        const signature = noSign ? null : sigData();
         const ok = await saveSoon(S.db.doc(C.vis + '/' + v.id).update({ status: 'selesai',
-          out: { device: now.toISOString(), server: SERVER(), lat: fx.lat, lng: fx.lng, acc: fx.acc, gpsAt: fx.at, dist, radius: r, inside: r == null ? null : dist <= r, photo, result } }));
+          out: { device: now.toISOString(), server: SERVER(), ...gpsMeta, dist, radius: r, inside: r == null ? null : dist <= r, photo, photoAge: G.ages.out ?? null, result, picName: noSign ? '' : pic, signature, noSign: noSign ? reason : null } }));
         closeModal(); toast(ok ? 'Check-out tercatat. Terima kasih!' : 'Sinyal lemah: check-out tersimpan di HP dan terkirim otomatis saat ada sinyal.');
       } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
     }
@@ -1142,9 +1215,12 @@ const ACT = {
   async install() { if (!installEvt) return toast('Buka menu ⋮ di Chrome, lalu pilih "Instal aplikasi" atau "Tambahkan ke layar utama".'); installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; },
   goto: d => { MAP && MAP.closePopup(); const el = document.getElementById('v-' + d.id); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.animate([{ outline: '3px solid var(--mop)' }, { outline: '3px solid transparent' }], { duration: 1600 }); } },
   zoom: d => {
-    const v = S.visits.find(x => x.id === d.id) || S.active.find(x => x.id === d.id); if (!v) return; const p = v[d.k];
-    openModal(`${sheetHead(`${v.customerName}, foto ${d.k === 'in' ? 'check-in' : 'check-out'}`)}<div class="sheet-b"><img src="${esc(p.photo)}" alt="Foto ${esc(v.customerName)}" style="width:100%;border-radius:10px;display:block"><p class="muted">${esc(v.staffName)}, ${fmtTimeS(ptTime(p))}, ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)} (±${p.acc} m) <a href="${gmaps(p.lat, p.lng)}" target="_blank" rel="noopener">Buka di Google Maps</a></p></div>`, true);
+    const v = S.visits.find(x => x.id === d.id) || S.active.find(x => x.id === d.id); if (!v) return;
+    const src = d.k === 'selfie' ? v.in.selfie : v[d.k]?.photo, p = d.k === 'out' ? v.out : v.in;
+    const label = { in: 'foto lokasi', selfie: 'selfie', out: 'foto selesai' }[d.k];
+    openModal(`${sheetHead(`${v.customerName}, ${label}`)}<div class="sheet-b"><img src="${esc(src)}" alt="${label} ${esc(v.customerName)}" style="width:100%;border-radius:10px;display:block"><p class="muted">${esc(v.staffName)}, ${fmtTimeS(ptTime(p))}, ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)} (±${p.acc} m) <a href="${gmaps(p.lat, p.lng)}" target="_blank" rel="noopener">Buka di Google Maps</a></p></div>`, true);
   },
+  sigClear: () => initSig(),
   pw: () => openModal(`${sheetHead('Ganti password')}<form data-form="pw"><div class="sheet-b">
       <div class="field"><label for="p-old">Password lama</label><input id="p-old" type="password" name="old" required></div>
       <div class="field"><label for="p-new">Password baru</label><input id="p-new" type="password" name="pw" minlength="6" required></div>
@@ -1237,11 +1313,12 @@ function reportHTML() {
       ${vs.map((v, i) => { const ti = ptTime(v.in), to = v.out ? ptTime(v.out) : null; return `<tr><td>${i + 1}</td><td><b>${esc(v.customerName)}</b>${v.customerAddress ? '<br>' + esc(v.customerAddress) : ''}</td>${staff ? '' : `<td>${esc(v.staffName)}</td>`}
         <td>${ptCell(v.in)}</td><td>${ptCell(v.out)}</td><td>${to ? fmtDur(to - ti) : '–'}</td>
         <td class="${v.in.inside === false ? 'bad' : v.in.inside ? 'ok' : ''}">${v.in.inside === false ? 'Di luar radius' : v.in.inside ? 'Di lokasi' : 'Titik customer belum ada'}</td>
-        <td>${esc(v.purpose || '')}${v.note ? '<br>Catatan: ' + esc(v.note) : ''}${v.out?.result ? '<br>Hasil: ' + esc(v.out.result) : ''}</td></tr>`; }).join('')}</tbody></table>` : '<p>Tidak ada kunjungan pada tanggal ini.</p>'}
+        <td>${esc(v.purpose || '')}${v.note ? '<br>Catatan: ' + esc(v.note) : ''}${v.out?.result ? '<br>Hasil: ' + esc(v.out.result) : ''}${v.out ? (v.out.signature ? `<br>PIC: ${esc(v.out.picName || '')}<img class="sg" src="${esc(v.out.signature)}" alt="TTD">` : v.out.noSign ? `<br>Tanpa TTD PIC: ${esc(v.out.noSign)}` : '') : ''}${isMgr() ? flagsOf(v).map(t => `<div class="fl">⚠ ${esc(t)}</div>`).join('') : ''}</td></tr>`; }).join('')}</tbody></table>` : '<p>Tidak ada kunjungan pada tanggal ini.</p>'}
     ${vs.length ? `<h2>Foto bukti</h2><div class="rpt-photos">${vs.map(v => `<figure><div class="pair">
-        <div>${v.in?.photo ? `<img src="${esc(v.in.photo)}" alt="Check-in">` : 'Tanpa foto'}</div>
-        <div>${v.out?.photo ? `<img src="${esc(v.out.photo)}" alt="Check-out">` : (v.out ? 'Tanpa foto check-out' : 'Belum check-out')}</div></div>
-        <figcaption><b>${esc(v.customerName)}</b>${esc(v.staffName)}. Kiri: check-in ${fmtTime(ptTime(v.in))}, kanan: check-out ${v.out ? fmtTime(ptTime(v.out)) : '–'}</figcaption></figure>`).join('')}</div>` : ''}
+        <div>${v.in?.photo ? `<img src="${esc(v.in.photo)}" alt="Lokasi">` : 'Tanpa foto'}</div>
+        <div>${v.in?.selfie ? `<img src="${esc(v.in.selfie)}" alt="Selfie">` : 'Tanpa selfie'}</div>
+        <div>${v.out?.photo ? `<img src="${esc(v.out.photo)}" alt="Selesai">` : (v.out ? 'Tanpa foto selesai' : 'Belum check-out')}</div></div>
+        <figcaption><b>${esc(v.customerName)}</b>${esc(v.staffName)}. Lokasi dan selfie: check-in ${fmtTime(ptTime(v.in))}. Kanan: check-out ${v.out ? fmtTime(ptTime(v.out)) : '–'}</figcaption></figure>`).join('')}</div>` : ''}
     <div class="rpt-sign"><div>Petugas lapangan<div class="ln">${staff ? esc(nameOf(staff)) : '(..............................)'}</div></div><div>Diperiksa oleh<div class="ln">${isMgr() ? esc(me().name) : '(..............................)'}</div></div></div>
     <p class="rpt-foot">Waktu berdasarkan server. Koordinat dari GPS perangkat petugas saat check-in dan check-out.</p></div>`;
 }
@@ -1257,10 +1334,10 @@ function exportCSV() {
   const vs = reportVisits(); if (!vs.length) return toast('Tidak ada data untuk diunduh.', 'bad');
   const q = x => `"${String(x ?? '').replace(/"/g, '""')}"`;
   const num = x => x == null ? '' : String(x).replace('.', ',');
-  const head = ['Tanggal','Petugas','Customer','Alamat','Keperluan','Catatan','Jam check-in','Lat check-in','Lng check-in','Akurasi check-in (m)','Jarak check-in (m)','Status lokasi','Jam check-out','Lat check-out','Lng check-out','Akurasi check-out (m)','Jarak check-out (m)','Durasi (menit)','Hasil kunjungan','Peta check-in'];
+  const head = ['Tanggal','Petugas','Customer','Alamat','Keperluan','Catatan','Jam check-in','Lat check-in','Lng check-in','Akurasi check-in (m)','Jarak check-in (m)','Status lokasi','Jam check-out','Lat check-out','Lng check-out','Akurasi check-out (m)','Jarak check-out (m)','Durasi (menit)','Hasil kunjungan','Nama PIC','Tanda tangan PIC','Selfie','Peringatan','Peta check-in'];
   const rows = vs.map(v => { const ti = ptTime(v.in), to = v.out ? ptTime(v.out) : null, o = v.out || {};
     return [v.date, v.staffName, v.customerName, v.customerAddress, v.purpose, v.note, fmtTimeS(ti), num(v.in.lat), num(v.in.lng), v.in.acc, v.in.dist ?? '', v.in.inside === false ? 'Di luar radius' : v.in.inside ? 'Di lokasi' : 'Titik customer belum ada',
-      to ? fmtTimeS(to) : '', num(o.lat), num(o.lng), o.acc ?? '', o.dist ?? '', to ? Math.round((to - ti) / 60000) : '', o.result || '', gmaps(v.in.lat, v.in.lng)].map(q).join(';'); });
+      to ? fmtTimeS(to) : '', num(o.lat), num(o.lng), o.acc ?? '', o.dist ?? '', to ? Math.round((to - ti) / 60000) : '', o.result || '', o.picName || '', v.out ? (o.signature ? 'Ada' : 'Tidak ada: ' + (o.noSign || '')) : '', v.in.selfie ? 'Ada' : 'Tidak ada', flagsOf(v).join(' | '), gmaps(v.in.lat, v.in.lng)].map(q).join(';'); });
   download(`kunjungan-${S.date}${S.staffFilter ? '-' + S.staffFilter : ''}.csv`, '\ufeff' + [head.map(q).join(';'), ...rows].join('\r\n'), 'text/csv;charset=utf-8');
   toast('File CSV diunduh. Buka dengan Excel.');
 }
