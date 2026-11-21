@@ -345,6 +345,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
 #map{height:430px}
 .map-legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:10px 14px;font-size:12.5px;color:var(--ink-2);border-top:1px solid var(--line)}
 .map-legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+#miniMap{pointer-events:none;touch-action:pan-y}
 .minimap{height:210px;border-radius:12px;overflow:hidden;margin-top:10px;border:1px solid var(--line);background:var(--surface-2)}
 .leaflet-container{font:inherit}
 .leaflet-popup-content{font:13px/1.45 Manrope,system-ui,sans-serif;margin:10px 12px}
@@ -1024,7 +1025,7 @@ function renderGPS() {
 function initMini() {
   const el = $('#miniMap'); if (!el || !G) return;
   if (!window.L) { el.hidden = true; return; }
-  MODALMAP = L.map(el, { zoomControl: false }).setView([-6.2, 106.82], 12); tiles().addTo(MODALMAP);
+  MODALMAP = L.map(el, { zoomControl: false, dragging: false, touchZoom: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, tap: false }).setView([-6.2, 106.82], 12); tiles().addTo(MODALMAP);
   G.layer = L.layerGroup().addTo(MODALMAP); updateMini();
 }
 function updateMini() {
