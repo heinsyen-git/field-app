@@ -59,3 +59,92 @@ Menu **Laporan periode** (khusus manager):
 2. Isi nama atasan yang dituju dan catatan manager.
 3. Tekan **Susun laporan**. Sistem menghitung ringkasan, tren kunjungan, kinerja per petugas, rekap customer, keperluan, dan temuan kepatuhan.
 4. Tekan **Cetak / Simpan PDF**, pilih printer **Simpan sebagai PDF**, lalu kirim PDF ke atasan untuk ditandatangani. Bisa juga **Unduh (HTML)**.
+
+---
+
+# Pembaruan Keamanan (Firebase Authentication + Rules berbasis peran)
+
+Setelah pembaruan ini:
+- Login memakai **Firebase Authentication** (Google). Password tidak lagi tersimpan di database aplikasi.
+- Database hanya bisa diakses oleh pengguna yang login dan akunnya aktif.
+- **Petugas** hanya bisa membuat kunjungan atas namanya sendiri, menambah check-out satu kali, dan hanya melihat kunjungannya sendiri. Petugas tidak bisa mengedit atau menghapus data.
+- **Manager** mengelola customer dan pengguna, serta menghapus data.
+- Waktu check-in dan check-out **dipaksa memakai waktu server** oleh aturan database.
+
+## URUTAN PEMASANGAN (ikuti persis)
+
+### 1. Aktifkan login Email/Password di Firebase
+1. Buka https://console.firebase.google.com, lalu pilih project **field-app**.
+2. Di menu kiri, buka **Security**, lalu **Authentication** (atau cari "Authentication"), lalu klik **Get started**.
+3. Buka tab **Sign-in method**, pilih **Email/Password**, aktifkan sakelar pertama (**Email/Password**), lalu klik **Save**.
+   Sakelar kedua ("Email link") biarkan mati.
+
+### 2. Unggah aplikasi baru
+Unggah `index.html` dan `config.js` ke repository GitHub **field-app** (Add file, lalu Upload files, lalu Commit changes). Tunggu 1–3 menit.
+
+### 3. Aktivasi keamanan (segera setelah langkah 2)
+1. Buka aplikasi di komputer. Muncul halaman **Aktivasi keamanan**.
+2. Isi nama manager, **username** (boleh sama dengan yang lama), dan **password baru minimal 8 karakter**.
+3. Klik **Aktifkan dan masuk**.
+
+> Lakukan langkah 3 secepatnya. Sebelum aktivasi, siapa pun yang membuka aplikasi lebih dulu bisa mengaktifkannya.
+
+### 4. Pasang Rules keamanan yang baru
+1. Buka Firebase project **field-app**, lalu **Firestore**, tab **Rules**.
+2. Hapus semua isinya, tempel isi file `firestore.rules` dari folder ini, lalu klik **Publish**.
+3. Jika Firebase menampilkan pesan kesalahan saat Publish, jangan dipaksa. Kirim tangkapan layarnya ke pembuat aplikasi.
+
+### 5. Aktifkan akun petugas
+1. Di aplikasi, buka menu **Pengguna**. Akun lama berstatus **Perlu aktivasi**.
+2. Tekan **Aktifkan**, tentukan password baru (minimal 8 karakter), lalu beri tahu petugas secara langsung.
+3. Petugas membuka aplikasi di HP, lalu login dengan username yang sama dan password baru.
+
+### 6. Uji coba
+- [ ] Manager bisa melihat Pemantauan, Customer, dan Laporan.
+- [ ] Petugas bisa check-in dan check-out.
+- [ ] Di menu Riwayat, petugas hanya melihat kunjungannya sendiri.
+- [ ] Login dengan password salah ditolak.
+- [ ] Akun yang dinonaktifkan tidak bisa masuk.
+
+Jika muncul pesan "Akses ditolak oleh aturan keamanan", kirim tangkapan layarnya.
+
+## Mengelola password
+- **Ganti password sendiri:** menu **Akun** (petugas) atau tombol **Password** (manager).
+- **Lupa password:** manager membuka **Pengguna**, lalu **Atur ulang password**. Password lama langsung tidak berlaku.
+- **Hapus akun:** akun langsung tidak bisa dipakai lagi.
+
+---
+
+# App Check (lapisan tambahan, disarankan)
+
+App Check memastikan hanya aplikasi Anda yang bisa mengakses database, bukan skrip atau alat lain.
+
+1. Buat kunci reCAPTCHA v3 di https://www.google.com/recaptcha/admin/create
+   - Jenis: **Score based (v3)**
+   - Domain: `heinsyen-git.github.io` (tambahkan juga `field-app-27a44.web.app` dan `field-app-27a44.firebaseapp.com` jika pindah ke Firebase Hosting)
+   - Simpan **Site key** dan **Secret key**.
+   (Tampilan halaman ini bisa berbeda karena Google sedang memindahkan reCAPTCHA ke Google Cloud.)
+2. Di Firebase project **field-app**, buka **App Check**, lalu **Apps**. Pilih aplikasi web **Lapangan**, pilih **reCAPTCHA v3**, tempel **Secret key**, lalu **Save**.
+3. Buka `config.js`, hapus tanda `//` di depan baris `appCheckKey`, lalu ganti `ISI_SITE_KEY_RECAPTCHA_V3` dengan **Site key**. Unggah ulang `config.js`.
+4. Tunggu 1–2 hari, lalu buka **App Check** di Firebase. Jika hampir semua permintaan berstatus "Verified", klik **Enforce** untuk **Cloud Firestore** dan **Authentication**.
+   Jangan klik Enforce sebelum langkah 3 berjalan, karena aplikasi akan ditolak.
+
+---
+
+# Pindah ke Firebase Hosting dan repository privat (opsional)
+
+Agar kode aplikasi tidak bisa dilihat publik:
+
+1. Pasang **Node.js LTS** dari https://nodejs.org
+2. Buka Command Prompt, lalu jalankan:
+   ```
+   npm install -g firebase-tools
+   firebase login
+   cd C:\lokasi\folder\kunjungan-lapangan
+   firebase deploy --only hosting
+   ```
+   File `firebase.json` dan `.firebaserc` di folder ini sudah disiapkan, jadi tidak perlu `firebase init`.
+3. Aplikasi tersedia di **https://field-app-27a44.web.app**
+4. Di setiap HP petugas: hapus ikon aplikasi lama, buka link baru di Chrome, lalu **Pasang aplikasi di HP**.
+5. Setelah semua HP pindah, ubah repository GitHub **field-app** menjadi **Private** (Settings, lalu General, lalu Danger Zone, lalu Change visibility). GitHub Pages lama otomatis berhenti.
+6. Untuk pembaruan berikutnya, jalankan lagi `firebase deploy --only hosting` dari folder yang sama.

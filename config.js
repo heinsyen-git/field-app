@@ -5,5 +5,6 @@ window.FIREBASE_CONFIG = {
   projectId: "field-app-27a44",
   storageBucket: "field-app-27a44.firebasestorage.app",
   messagingSenderId: "3848331956",
-  appId: "1:3848331956:web:2bdb74101c6c66c76eade1"
+  appId: "1:3848331956:web:2bdb74101c6c66c76eade1",
+  // appCheckKey: "ISI_SITE_KEY_RECAPTCHA_V3"   (opsional, lihat PANDUAN bagian App Check)
 };

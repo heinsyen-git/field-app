@@ -403,6 +403,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="config.js"></script>
 <script>
@@ -410,7 +412,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
    Kunjungan Lapangan: check-in/out customer dengan GPS, foto, timestamp
    Data: Firestore koleksi fv_accounts, fv_customers, fv_visits, fv_settings
    ====================================================================== */
-const C = { acc:'fv_accounts', cust:'fv_customers', vis:'fv_visits', ph:'fv_photos', set:'fv_settings/app' };
+const C = { acc:'fv_accounts', login:'fv_login', cust:'fv_customers', vis:'fv_visits', ph:'fv_photos', set:'fv_settings/app', flag:'fv_settings/auth' };
+const EMAIL_DOMAIN = 'field-app.local';
+const emailFor = (u, n) => `${u}${n ? '+' + n : ''}@${EMAIL_DOMAIN}`;
+const unameOf = email => String(email || '').split('@')[0].split('+')[0];
 const PURPOSES = ['Kunjungan rutin', 'Survey lokasi', 'Instalasi', 'Perbaikan / service', 'Penagihan', 'Pengiriman barang', 'Meeting customer', 'Lainnya'];
 const ROLE = { manager:'Manager', staff:'Petugas lapangan' };
 
@@ -479,10 +484,22 @@ function ss(k, v) { try { if (v === undefined) return sessionStorage.getItem(k);
 function toast(msg, kind) { const el = document.createElement('div'); el.className = 'tst ' + (kind || ''); el.textContent = msg; $('#toast').appendChild(el); setTimeout(() => el.remove(), kind === 'bad' ? 5500 : 3400); }
 function errMsg(e) {
   if (!e) return 'Terjadi kesalahan.';
-  if (e.code === 'permission-denied') return 'Akses database ditolak. Periksa Rules Firestore (koleksi fv_...).';
+  if (e.code === 'permission-denied') return 'Akses ditolak oleh aturan keamanan. Pastikan akun Anda aktif, lalu coba masuk ulang.';
+  if (/^auth\//.test(e.code || '')) return authErr(e);
   if (e.code === 'unavailable') return 'Tidak ada koneksi internet. Coba lagi saat sinyal tersedia.';
   if (e.code === 'resource-exhausted') return 'Kuota Firebase habis untuk hari ini.';
   return e.message || String(e);
+}
+function authErr(e) {
+  const c = e && e.code || '';
+  if (['auth/wrong-password', 'auth/invalid-credential', 'auth/user-not-found', 'auth/invalid-login-credentials', 'auth/invalid-email'].includes(c)) return 'Username atau password salah.';
+  if (c === 'auth/too-many-requests') return 'Terlalu banyak percobaan masuk. Tunggu beberapa menit lalu coba lagi.';
+  if (c === 'auth/network-request-failed') return 'Tidak ada koneksi internet.';
+  if (c === 'auth/weak-password') return 'Password terlalu lemah, minimal 6 karakter.';
+  if (c === 'auth/operation-not-allowed') return 'Login Email/Password belum diaktifkan di Firebase Authentication (lihat PANDUAN).';
+  if (c === 'auth/email-already-in-use') return 'Akun login untuk username ini sudah ada.';
+  if (c === 'auth/requires-recent-login') return 'Demi keamanan, keluar lalu masuk lagi sebelum mengganti password.';
+  return (e && e.message) || 'Terjadi kesalahan saat login.';
 }
 async function hashPw(username, pw) {
   const txt = 'kbr-v1:' + username + ':' + pw;
@@ -529,7 +546,7 @@ let SERVER = () => new Date().toISOString();
 
 /* ---------- state ---------- */
 const S = { db:null, accounts:{}, accLoaded:false, customers:[], visits:[], visLoaded:false, active:[], settings:{}, me:null, tab:null,
-  date:today(), staffFilter:'', rp:{ from: dstr(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), to: today(), staff:'', boss:'', note:'' }, unsubVis:null, unsubAct:null, screen:null, pending:false };
+  date:today(), staffFilter:'', rp:{ from: dstr(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), to: today(), staff:'', boss:'', note:'' }, unsubVis:null, unsubAct:null, screen:null, pending:false, auth:null, authUser:null, activated:null, accErr:null, subs:[], settingsExists:false };
 const me = () => S.accounts[S.me] || {};
 const isMgr = () => me().role === 'manager';
 const nameOf = u => S.accounts[u]?.name || u;
@@ -539,34 +556,58 @@ const custOf = v => v.customerId ? S.customers.find(c => c.id === v.customerId) 
 const byInDesc = (a, b) => (ptTime(b.in) || 0) - (ptTime(a.in) || 0);
 
 /* ---------- boot ---------- */
+let SECONDARY = null;
+function appCheckOn(app) {
+  const k = FIREBASE_CONFIG.appCheckKey;
+  if (!k || !firebase.appCheck) return;
+  try { app.appCheck().activate(new firebase.appCheck.ReCaptchaV3Provider(k), true); } catch (e) { console.warn('App Check', e); }
+}
 async function init() {
-  const slow = setTimeout(() => { if (!S.accLoaded) $('#app').innerHTML = msgScreen('Data belum bisa dimuat', 'Periksa koneksi internet Anda. Halaman ini akan tampil sendiri begitu data tersedia.'); }, 10000);
-  if (!window.firebase || !configOk()) { clearTimeout(slow); $('#app').innerHTML = msgScreen('Aplikasi belum terhubung ke database', !window.firebase ? 'Library Firebase gagal dimuat. Periksa koneksi internet lalu muat ulang.' : 'Isi file config.js dengan konfigurasi Firebase Anda.'); return; }
-  firebase.initializeApp(FIREBASE_CONFIG);
+  if (!window.firebase || !configOk() || !firebase.auth) { $('#app').innerHTML = msgScreen('Aplikasi belum terhubung ke database', !window.firebase || !firebase.auth ? 'Library Firebase gagal dimuat. Periksa koneksi internet lalu muat ulang.' : 'Isi file config.js dengan konfigurasi Firebase Anda.'); return; }
+  const app = firebase.initializeApp(FIREBASE_CONFIG);
+  appCheckOn(app);
   const db = firebase.firestore();
   try { await db.enablePersistence({ synchronizeTabs: true }); } catch (e) {}
-  S.db = db; SERVER = () => firebase.firestore.FieldValue.serverTimestamp();
-  db.collection(C.acc).onSnapshot(snap => {
-    S.accounts = {}; snap.docs.forEach(d => { S.accounts[d.id] = d.data(); });
-    if (!snap.metadata.fromCache || snap.size) { S.accLoaded = true; clearTimeout(slow); }
-    route();
-  }, e => { clearTimeout(slow); $('#app').innerHTML = msgScreen('Data akun tidak bisa dimuat', errMsg(e)); });
-  db.collection(C.cust).onSnapshot(snap => {
-    S.customers = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
-    refresh();
-  }, e => toast('Data customer tidak bisa dimuat: ' + errMsg(e), 'bad'));
+  S.db = db; S.auth = firebase.auth(); SERVER = () => firebase.firestore.FieldValue.serverTimestamp();
   db.doc(C.set).onSnapshot(snap => {
-    S.settings = snap.exists ? snap.data() : {};
+    S.settingsExists = snap.exists; S.settings = snap.exists ? snap.data() : {};
     const o = $('#officeName'); if (o) o.textContent = S.settings.officeName || '';
     const lo = $('#loginOffice'); if (lo) lo.textContent = S.settings.officeName || 'Laporan kunjungan petugas lapangan';
     if (S.tab === 'pengaturan') renderContent();
   }, () => {});
-  subVisits();
+  db.doc(C.flag).onSnapshot(snap => {
+    const was = S.activated; S.activated = snap.exists;
+    if (was === false && S.activated && S.authUser) { stopData(); startData(); }
+    route();
+  }, e => { $('#app').innerHTML = msgScreen('Database tidak bisa diakses', errMsg(e)); });
+  S.auth.onAuthStateChanged(u => {
+    stopData(); S.authUser = u; S.me = u ? unameOf(u.email) : null; S.tab = null;
+    if (u) startData();
+    route();
+  });
+}
+function startData() {
+  S.accounts = {}; S.accLoaded = false; S.accErr = null;
+  S.subs.push(S.db.collection(C.acc).onSnapshot(snap => {
+    S.accounts = {}; snap.docs.forEach(d => { S.accounts[d.id] = d.data(); }); S.accLoaded = true; S.accErr = null; route();
+  }, e => { S.accLoaded = true; S.accErr = e; route(); }));
+  S.subs.push(S.db.collection(C.cust).onSnapshot(snap => {
+    S.customers = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)); refresh();
+  }, () => {}));
+}
+function stopData() {
+  S.subs.forEach(f => { try { f(); } catch (e) {} }); S.subs = [];
+  if (S.unsubVis) { S.unsubVis(); S.unsubVis = null; }
+  if (S.unsubAct) { S.unsubAct(); S.unsubAct = null; }
+  S.accounts = {}; S.accLoaded = false; S.customers = []; S.visits = []; S.active = []; S.visLoaded = false;
 }
 function subVisits() {
   if (S.unsubVis) S.unsubVis();
   S.visLoaded = false;
-  S.unsubVis = S.db.collection(C.vis).where('date', '==', S.date).onSnapshot(snap => {
+  if (!S.me || !S.accounts[S.me]) return;
+  let q = S.db.collection(C.vis).where('date', '==', S.date);
+  if (!isMgr()) q = q.where('username', '==', S.me);
+  S.unsubVis = q.onSnapshot(snap => {
     S.visits = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort(byInDesc); S.visLoaded = true; refresh();
   }, e => toast('Kunjungan tidak bisa dimuat: ' + errMsg(e), 'bad'));
 }
@@ -583,12 +624,16 @@ function refresh() { if (S.screen && S.screen.startsWith('app')) { renderContent
 
 function route() {
   let scr;
-  if (!S.accLoaded) scr = 'loading';
-  else if (!Object.keys(S.accounts).length) scr = 'setup';
+  if (S.activated == null) scr = 'loading';
+  else if (!S.activated) scr = 'activate';
+  else if (!S.authUser) scr = 'login';
+  else if (!S.accLoaded) scr = 'loading';
   else {
-    if (!S.me) { const u = ss('fv-user'); if (u && S.accounts[u] && S.accounts[u].active !== false) S.me = u; }
-    if (S.me && (!S.accounts[S.me] || S.accounts[S.me].active === false)) { S.me = null; ss('fv-user', null); }
-    scr = S.me ? 'app:' + S.me + ':' + me().role : 'login';
+    const a = S.accounts[S.me];
+    if (S.accErr || !a || a.active === false) {
+      toast(S.accErr && S.accErr.code !== 'permission-denied' ? errMsg(S.accErr) : 'Akun ini tidak aktif atau belum diaktifkan. Hubungi manager.', 'bad');
+      S.auth.signOut(); scr = 'login';
+    } else scr = 'app:' + S.me + ':' + a.role;
   }
   if (scr !== S.screen) { S.screen = scr; paint(scr); }
   else if (scr.startsWith('app')) { updateHeader(); renderContent(); }
@@ -600,16 +645,16 @@ function paint(scr) {
   closeModal(); MAP = null;
   const app = $('#app');
   if (scr === 'loading') { app.innerHTML = `<div class="loading"><div><div class="spin"></div>Memuat data…</div></div>`; return; }
-  if (scr === 'setup') {
+  if (scr === 'activate') {
     app.innerHTML = `<div class="auth"><div class="auth-card">
-      <div class="auth-top"><h1>Siapkan aplikasi</h1><p>Buat akun manager pertama. Akun petugas lapangan bisa ditambahkan setelah ini.</p></div>
-      <form class="auth-body" data-form="setup" autocomplete="off">
-        <div class="field"><label for="s-office">Nama perusahaan</label><input id="s-office" type="text" name="office" required></div>
+      <div class="auth-top"><h1>Aktivasi keamanan</h1><p>Langkah satu kali: buat akun manager dengan login aman. Akun petugas diaktifkan setelah ini dari menu Pengguna.</p></div>
+      <form class="auth-body" data-form="activate" autocomplete="off">
+        <div class="field"><label for="s-office">Nama perusahaan</label><input id="s-office" type="text" name="office" value="${esc(S.settings.officeName || '')}" required></div>
         <div class="field"><label for="s-name">Nama manager</label><input id="s-name" type="text" name="name" required></div>
-        <div class="field"><label for="s-user">Username</label><input id="s-user" type="text" name="username" autocapitalize="none" required><small>Huruf kecil, angka, titik, garis bawah.</small></div>
-        <div class="field"><label for="s-pw">Password</label><input id="s-pw" type="password" name="pw" minlength="6" required></div>
-        <div class="field"><label for="s-pw2">Ulangi password</label><input id="s-pw2" type="password" name="pw2" minlength="6" required></div>
-        <button class="btn primary" type="submit">Buat akun manager</button>
+        <div class="field"><label for="s-user">Username manager</label><input id="s-user" type="text" name="username" autocapitalize="none" required><small>Huruf kecil, angka, titik, garis bawah. Boleh sama dengan username lama.</small></div>
+        <div class="field"><label for="s-pw">Password baru</label><input id="s-pw" type="password" name="pw" minlength="8" autocomplete="new-password" required><small>Minimal 8 karakter, gabungkan huruf dan angka.</small></div>
+        <div class="field"><label for="s-pw2">Ulangi password</label><input id="s-pw2" type="password" name="pw2" minlength="8" autocomplete="new-password" required></div>
+        <button class="btn primary" type="submit">Aktifkan dan masuk</button>
       </form></div></div>`;
     return;
   }
@@ -655,7 +700,7 @@ function paint(scr) {
       <nav class="bnav" role="tablist"><div class="bnav-in">${tabs.map(([k, l, ic]) => `<button class="tab" role="tab" data-act="tab" data-tab="${k}">${ic}<span>${l}</span></button>`).join('')}</div></nav>
     </div>`;
   }
-  subActive();
+  subActive(); subVisits();
   updateHeader();
   setTab(S.tab);
 }
@@ -867,12 +912,17 @@ const VIEWS = {
   },
   pengguna() {
     const rows = Object.entries(S.accounts).sort((a, b) => (a[1].role === b[1].role ? a[1].name.localeCompare(b[1].name) : a[1].role === 'manager' ? -1 : 1));
-    return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nama</th><th>Username</th><th>Peran</th><th>Status</th><th></th></tr></thead><tbody>
-      ${rows.map(([u, a]) => `<tr><td><b>${esc(a.name)}</b>${u === S.me ? ' <span class="muted">(Anda)</span>' : ''}</td><td>${esc(u)}</td><td>${ROLE[a.role]}</td>
-        <td>${a.active === false ? chip('Nonaktif', 'idle') : chip('Aktif', 'ok')}</td>
-        <td style="text-align:right;white-space:nowrap"><button class="btn sm" data-act="userForm" data-user="${esc(u)}">Ubah</button>
-        ${u !== S.me ? `<button class="btn sm" data-act="userToggle" data-user="${esc(u)}">${a.active === false ? 'Aktifkan' : 'Nonaktifkan'}</button> <button class="btn sm bad" data-act="userDel" data-user="${esc(u)}">Hapus</button>` : ''}</td></tr>`).join('')}
-    </tbody></table></div>`;
+    const pend = rows.filter(([, a]) => !a.authed).length;
+    return `${pend ? `<div class="banner">${pend} akun dibuat sebelum pembaruan keamanan dan belum bisa masuk. Tekan <b>Aktifkan</b> untuk menentukan password barunya.</div>` : ''}
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nama</th><th>Username</th><th>Peran</th><th>Status</th><th></th></tr></thead><tbody>
+      ${rows.map(([u, a]) => `<tr><td><b>${esc(a.name)}</b>${u === S.me ? ' <span class="muted">(Anda)</span>' : ''}</td><td>${esc(u)}</td><td>${ROLE[a.role] || a.role}</td>
+        <td>${!a.authed ? chip('Perlu aktivasi', 'go') : a.active === false ? chip('Nonaktif', 'idle') : chip('Aktif', 'ok')}</td>
+        <td style="text-align:right;white-space:nowrap">
+          ${!a.authed ? `<button class="btn sm primary" data-act="userForm" data-user="${esc(u)}" data-mode="activate">Aktifkan</button>` : `<button class="btn sm" data-act="userForm" data-user="${esc(u)}" data-mode="edit">Ubah</button>`}
+          ${u !== S.me && a.authed ? `<button class="btn sm" data-act="userForm" data-user="${esc(u)}" data-mode="reset">Atur ulang password</button> <button class="btn sm" data-act="userToggle" data-user="${esc(u)}">${a.active === false ? 'Aktifkan' : 'Nonaktifkan'}</button>` : ''}
+          ${u !== S.me ? `<button class="btn sm bad" data-act="userDel" data-user="${esc(u)}">Hapus</button>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="muted" style="font-size:13px;margin-top:12px">Password disimpan dan diperiksa oleh Firebase Authentication (Google), tidak tersimpan di database aplikasi. Pengguna bisa mengganti password sendiri di menu Akun.</p>`;
   },
   pengaturan() {
     return `<div class="card" style="max-width:560px"><h3>Pengaturan umum</h3>
@@ -1113,26 +1163,47 @@ function setCustPin(p, writeInput) {
 }
 
 /* ---------- forms ---------- */
+async function createAuthUser(u, pw, fresh) {
+  if (!SECONDARY) { SECONDARY = firebase.initializeApp(FIREBASE_CONFIG, 'secondary'); appCheckOn(SECONDARY); try { await SECONDARY.auth().setPersistence(firebase.auth.Auth.Persistence.NONE); } catch (e) {} }
+  const sa = SECONDARY.auth();
+  let email = emailFor(u, fresh ? Date.now().toString(36) : '');
+  try { await sa.createUserWithEmailAndPassword(email, pw); }
+  catch (e) { if (e.code !== 'auth/email-already-in-use' || fresh) throw e; email = emailFor(u, Date.now().toString(36)); await sa.createUserWithEmailAndPassword(email, pw); }
+  try { await sa.signOut(); } catch (e) {}
+  return email;
+}
 const activeManagers = () => Object.values(S.accounts).filter(a => a.role === 'manager' && a.active !== false);
 function busy(f, on, label) { f.querySelectorAll('button[type=submit]').forEach(b => { b.disabled = on; if (label && on) { b.dataset.l = b.textContent; b.textContent = label; } else if (!on && b.dataset.l) b.textContent = b.dataset.l; }); }
 const FORMS = {
-  async setup(f) {
+  async activate(f) {
     const v = Object.fromEntries(new FormData(f)); const u = v.username.trim().toLowerCase();
     if (!/^[a-z0-9._]{3,30}$/.test(u)) return toast('Username hanya huruf kecil, angka, titik, garis bawah (3–30 karakter).', 'bad');
-    if (v.pw.length < 6) return toast('Password minimal 6 karakter.', 'bad');
+    if (v.pw.length < 8) return toast('Password minimal 8 karakter.', 'bad');
     if (v.pw !== v.pw2) return toast('Kedua password tidak sama.', 'bad');
-    busy(f, true);
+    busy(f, true, 'Mengaktifkan…');
     try {
-      await S.db.doc(C.set).set({ officeName: v.office.trim(), address: '', radius: 150 });
-      await S.db.doc(C.acc + '/' + u).set({ name: v.name.trim(), role: 'manager', pass: await hashPw(u, v.pw), active: true });
-      S.me = u; ss('fv-user', u); toast('Akun manager dibuat.');
+      const email = emailFor(u);
+      try { await S.auth.createUserWithEmailAndPassword(email, v.pw); }
+      catch (e) { if (e.code === 'auth/email-already-in-use') await S.auth.signInWithEmailAndPassword(email, v.pw); else throw e; }
+      const b = S.db.batch(), now = new Date().toISOString();
+      b.set(S.db.doc(C.login + '/' + u), { email });
+      b.set(S.db.doc(C.acc + '/' + u), { name: v.name.trim(), role: 'manager', active: true, authed: true, createdAt: now });
+      if (!S.settingsExists) b.set(S.db.doc(C.set), { officeName: v.office.trim(), address: '', radius: 150 });
+      b.set(S.db.doc(C.flag), { activatedAt: now, by: u });
+      await b.commit();
+      if (S.settingsExists && v.office.trim() && v.office.trim() !== S.settings.officeName) await S.db.doc(C.set).update({ officeName: v.office.trim() });
+      toast('Keamanan aktif. Selamat datang!');
     } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
   },
   async login(f) {
-    const v = Object.fromEntries(new FormData(f)); const u = v.username.trim().toLowerCase(), a = S.accounts[u];
-    if (!a || a.pass !== await hashPw(u, v.pw)) return toast('Username atau password salah.', 'bad');
-    if (a.active === false) return toast('Akun ini dinonaktifkan. Hubungi manager.', 'bad');
-    S.me = u; ss('fv-user', u); S.tab = null; route();
+    const v = Object.fromEntries(new FormData(f)); const u = v.username.trim().toLowerCase();
+    if (!u || !v.pw) return;
+    busy(f, true, 'Memeriksa…');
+    try {
+      const ls = await S.db.doc(C.login + '/' + u).get();
+      if (!ls.exists) { busy(f, false); return toast('Username atau password salah, atau akun belum diaktifkan manager.', 'bad'); }
+      await S.auth.signInWithEmailAndPassword(ls.data().email, v.pw);
+    } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
   },
   async check(f) {
     if (!G) return;
@@ -1212,28 +1283,42 @@ const FORMS = {
     } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
   },
   async user(f) {
-    const v = Object.fromEntries(new FormData(f)); const edit = f.dataset.user; const u = edit || v.username.trim().toLowerCase();
-    if (!edit) {
+    const v = Object.fromEntries(new FormData(f)); const mode = f.dataset.mode; const edit = f.dataset.user;
+    const u = edit || (v.username || '').trim().toLowerCase(); const a = S.accounts[u];
+    if (mode === 'new') {
       if (!/^[a-z0-9._]{3,30}$/.test(u)) return toast('Username hanya huruf kecil, angka, titik, garis bawah (3–30 karakter).', 'bad');
-      if (S.accounts[u]) return toast('Username sudah dipakai.', 'bad');
-      if ((v.pw || '').length < 6) return toast('Password minimal 6 karakter.', 'bad');
-    } else if (v.pw && v.pw.length < 6) return toast('Password baru minimal 6 karakter.', 'bad');
-    if (edit && S.accounts[edit].role === 'manager' && v.role !== 'manager' && activeManagers().length <= 1) return toast('Harus ada minimal satu manager aktif.', 'bad');
-    busy(f, true);
+      if (a) return toast('Username sudah dipakai.', 'bad');
+    }
+    if (mode !== 'edit') {
+      if ((v.pw || '').length < 8) return toast('Password minimal 8 karakter.', 'bad');
+      if (v.pw !== v.pw2) return toast('Kedua password tidak sama.', 'bad');
+    }
+    if (mode === 'edit' && a.role === 'manager' && v.role !== 'manager' && activeManagers().length <= 1) return toast('Harus ada minimal satu manager aktif.', 'bad');
+    busy(f, true, mode === 'edit' ? 'Menyimpan…' : 'Membuat login…');
     try {
-      if (edit) { const patch = { name: v.name.trim(), role: v.role }; if (v.pw) patch.pass = await hashPw(u, v.pw); await S.db.doc(C.acc + '/' + u).update(patch); }
-      else await S.db.doc(C.acc + '/' + u).set({ name: v.name.trim(), role: v.role, pass: await hashPw(u, v.pw), active: true });
-      closeModal(); toast(edit ? 'Pengguna diperbarui.' : `Akun ${u} dibuat.`);
+      if (mode === 'edit') await S.db.doc(C.acc + '/' + u).update({ name: v.name.trim(), role: v.role });
+      else {
+        const email = await createAuthUser(u, v.pw, mode === 'reset');
+        const b = S.db.batch();
+        b.set(S.db.doc(C.login + '/' + u), { email });
+        if (mode === 'new') b.set(S.db.doc(C.acc + '/' + u), { name: v.name.trim(), role: v.role, active: true, authed: true, createdAt: new Date().toISOString() });
+        if (mode === 'activate') b.set(S.db.doc(C.acc + '/' + u), { name: a.name, role: a.role, active: a.active !== false, authed: true, createdAt: a.createdAt || new Date().toISOString() });
+        await b.commit();
+      }
+      closeModal();
+      toast({ edit: 'Pengguna diperbarui.', new: `Akun ${u} dibuat.`, activate: `Akun ${u} aktif. Beri tahu password-nya ke yang bersangkutan.`, reset: `Password ${u} diatur ulang. Password lama tidak berlaku lagi.` }[mode]);
     } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
   },
   async pw(f) {
     const v = Object.fromEntries(new FormData(f));
-    if (me().pass !== await hashPw(S.me, v.old)) return toast('Password lama salah.', 'bad');
-    if (v.pw.length < 6) return toast('Password baru minimal 6 karakter.', 'bad');
+    if (v.pw.length < 8) return toast('Password baru minimal 8 karakter.', 'bad');
     if (v.pw !== v.pw2) return toast('Kedua password baru tidak sama.', 'bad');
     busy(f, true);
-    try { await S.db.doc(C.acc + '/' + S.me).update({ pass: await hashPw(S.me, v.pw) }); closeModal(); toast('Password diganti.'); }
-    catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+    try {
+      const user = S.auth.currentUser;
+      await user.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(user.email, v.old));
+      await user.updatePassword(v.pw); closeModal(); toast('Password diganti.');
+    } catch (e) { toast(['auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials'].includes(e.code) ? 'Password lama salah.' : errMsg(e), 'bad'); busy(f, false); }
   },
   async settings(f) {
     const v = Object.fromEntries(new FormData(f)); const r = Math.round(+v.radius);
@@ -1248,7 +1333,7 @@ const FORMS = {
     if (u === S.me) return toast('Tidak bisa menghapus akun sendiri.', 'bad');
     if (a.role === 'manager' && a.active !== false && activeManagers().length <= 1) return toast('Harus ada minimal satu manager aktif.', 'bad');
     busy(f, true);
-    try { await S.db.doc(C.acc + '/' + u).delete(); closeModal(); toast(`Akun ${a.name} dihapus.`); }
+    try { const b = S.db.batch(); b.delete(S.db.doc(C.acc + '/' + u)); b.delete(S.db.doc(C.login + '/' + u)); await b.commit(); closeModal(); toast(`Akun ${a.name} dihapus.`); }
     catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
   },
   async delVisit(f) {
@@ -1263,7 +1348,7 @@ document.addEventListener('submit', e => { const f = e.target; if (!f.dataset.fo
 const ACT = {
   tab: d => setTab(d.tab),
   close: () => closeModal(),
-  logout: () => { if (S.unsubAct) { S.unsubAct(); S.unsubAct = null; } S.active = []; S.me = null; ss('fv-user', null); S.tab = null; route(); },
+  logout: () => { S.tab = null; S.auth.signOut(); },
   checkin: () => openCheck('in'),
   checkout: d => openCheck('out', d.id),
   regps: () => startGPS(),
@@ -1278,8 +1363,8 @@ const ACT = {
   sigClear: () => initSig(),
   pw: () => openModal(`${sheetHead('Ganti password')}<form data-form="pw"><div class="sheet-b">
       <div class="field"><label for="p-old">Password lama</label><input id="p-old" type="password" name="old" required></div>
-      <div class="field"><label for="p-new">Password baru</label><input id="p-new" type="password" name="pw" minlength="6" required></div>
-      <div class="field"><label for="p-new2">Ulangi password baru</label><input id="p-new2" type="password" name="pw2" minlength="6" required></div>
+      <div class="field"><label for="p-new">Password baru</label><input id="p-new" type="password" name="pw" minlength="8" required></div>
+      <div class="field"><label for="p-new2">Ulangi password baru</label><input id="p-new2" type="password" name="pw2" minlength="8" required></div>
     </div><div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit">Ganti password</button></div></form>`),
   custForm: d => {
     const c = d.id ? S.customers.find(x => x.id === d.id) : null;
@@ -1328,13 +1413,18 @@ const ACT = {
       <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn bad" type="submit">Hapus</button></div></form>`);
   },
   userForm: d => {
-    const u = d.user, a = u ? S.accounts[u] : null;
-    openModal(`${sheetHead(a ? 'Ubah pengguna' : 'Tambah pengguna')}<form data-form="user" ${u ? `data-user="${esc(u)}"` : ''} autocomplete="off"><div class="sheet-b">
-      <div class="field"><label for="u-name">Nama lengkap</label><input id="u-name" type="text" name="name" value="${esc(a?.name || '')}" required></div>
-      <div class="field"><label for="u-user">Username</label><input id="u-user" type="text" name="username" value="${esc(u || '')}" autocapitalize="none" ${u ? 'disabled' : 'required'}></div>
-      <div class="field"><label for="u-role">Peran</label><select id="u-role" name="role"><option value="staff">Petugas lapangan</option><option value="manager" ${a?.role === 'manager' ? 'selected' : ''}>Manager</option></select></div>
-      <div class="field"><label for="u-pw">${a ? 'Password baru (kosongkan jika tidak diganti)' : 'Password'}</label><input id="u-pw" type="password" name="pw" autocomplete="new-password" ${a ? '' : 'required minlength="6"'}></div>
-    </div><div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit">${a ? 'Simpan perubahan' : 'Buat akun'}</button></div></form>`);
+    const u = d.user, a = u ? S.accounts[u] : null, mode = d.mode || (a ? 'edit' : 'new');
+    const title = { new: 'Tambah pengguna', edit: 'Ubah pengguna', activate: 'Aktifkan akun', reset: 'Atur ulang password' }[mode];
+    const pwFields = `<div class="field"><label for="u-pw">${mode === 'reset' ? 'Password baru' : 'Password'}</label><input id="u-pw" type="password" name="pw" autocomplete="new-password" minlength="8" required><small>Minimal 8 karakter. Sampaikan langsung ke yang bersangkutan, jangan lewat grup.</small></div>
+      <div class="field"><label for="u-pw2">Ulangi password</label><input id="u-pw2" type="password" name="pw2" autocomplete="new-password" minlength="8" required></div>`;
+    const info = mode === 'activate' ? '<p class="muted" style="margin-top:0">Akun ini dibuat sebelum pembaruan keamanan. Tentukan password baru agar bisa masuk lagi.</p>'
+      : mode === 'reset' ? '<p class="muted" style="margin-top:0">Password lama langsung tidak berlaku. Pengguna yang sedang masuk akan tertolak saat mengakses data.</p>' : '';
+    openModal(`${sheetHead(title)}<form data-form="user" data-mode="${mode}" ${u ? `data-user="${esc(u)}"` : ''} autocomplete="off"><div class="sheet-b">${info}
+      ${mode === 'new' || mode === 'edit' ? `<div class="field"><label for="u-name">Nama lengkap</label><input id="u-name" type="text" name="name" value="${esc(a?.name || '')}" required></div>` : `<p><b>${esc(a.name)}</b> (${esc(u)})</p>`}
+      ${mode === 'new' ? `<div class="field"><label for="u-user">Username</label><input id="u-user" type="text" name="username" autocapitalize="none" required><small>Huruf kecil, angka, titik, garis bawah.</small></div>` : ''}
+      ${mode === 'new' || mode === 'edit' ? `<div class="field"><label for="u-role">Peran</label><select id="u-role" name="role"><option value="staff">Petugas lapangan</option><option value="manager" ${a?.role === 'manager' ? 'selected' : ''}>Manager</option></select></div>` : ''}
+      ${mode === 'edit' ? '' : pwFields}
+    </div><div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit">${{ new: 'Buat akun', edit: 'Simpan perubahan', activate: 'Aktifkan akun', reset: 'Atur ulang' }[mode]}</button></div></form>`);
   },
   async userToggle(d) {
     const a = S.accounts[d.user]; if (!a) return;

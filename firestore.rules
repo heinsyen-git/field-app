@@ -1,8 +1,80 @@
 rules_version = '2';
+// Aturan keamanan Kunjungan Lapangan (berbasis login Firebase Authentication dan peran)
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{col}/{id} {
-      allow read, write: if col in ['fv_settings', 'fv_accounts', 'fv_customers', 'fv_visits', 'fv_photos'];
+
+    function signedIn() { return request.auth != null && request.auth.token.email != null; }
+    // username dari email login: "budi@field-app.local" atau "budi+abc@field-app.local" -> "budi"
+    function uname() { return request.auth.token.email.split('@')[0].split('[+]')[0]; }
+    function path(c, id) { return /databases/$(database)/documents/$(c)/$(id); }
+    function loginOk() {
+      return signedIn() && exists(path('fv_login', uname()))
+        && get(path('fv_login', uname())).data.email == request.auth.token.email;
+    }
+    function acct() { return get(path('fv_accounts', uname())).data; }
+    function isUser() { return loginOk() && exists(path('fv_accounts', uname())) && acct().active == true; }
+    function isMgr() { return isUser() && acct().role == 'manager'; }
+    // aktivasi pertama: hanya selama dokumen fv_settings/auth belum ada
+    function bootstrapping() { return signedIn() && !exists(path('fv_settings', 'auth')); }
+
+    match /fv_settings/{id} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isMgr() || ((id == 'auth' || id == 'app') && bootstrapping());
+      allow update: if isMgr() && id != 'auth';
+      allow delete: if false;
+    }
+
+    match /fv_login/{u} {
+      allow get: if true;
+      allow list: if isMgr();
+      allow create, update: if isMgr()
+        || (bootstrapping() && u == uname() && request.resource.data.email == request.auth.token.email);
+      allow delete: if isMgr();
+    }
+
+    match /fv_accounts/{u} {
+      allow read: if isUser();
+      allow create, update: if isMgr()
+        || (bootstrapping() && u == uname() && request.resource.data.role == 'manager');
+      allow delete: if isMgr() && u != uname();
+    }
+
+    match /fv_customers/{id} {
+      allow read: if isUser();
+      allow create: if isMgr()
+        || (isUser() && request.resource.data.pending == true
+            && request.resource.data.createdBy == uname() && request.resource.data.lat == null);
+      allow update, delete: if isMgr();
+    }
+
+    match /fv_visits/{id} {
+      allow read: if isMgr() || (isUser() && resource.data.username == uname());
+      // petugas hanya membuat kunjungan atas namanya sendiri, dengan waktu server
+      allow create: if isUser()
+        && request.resource.data.username == uname()
+        && request.resource.data.status == 'berlangsung'
+        && request.resource.data.out == null
+        && request.resource.data['in'].server == request.time;
+      // petugas hanya menambahkan check-out satu kali; manager hanya boleh menautkan customer
+      allow update: if (isUser() && resource.data.username == uname()
+            && resource.data.status == 'berlangsung'
+            && request.resource.data.status == 'selesai'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'out'])
+            && request.resource.data.out.server == request.time)
+        || (isMgr() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['customerId']));
+      allow delete: if isMgr();
+    }
+
+    match /fv_photos/{id} {
+      allow read: if isMgr()
+        || (isUser() && get(path('fv_visits', id)).data.username == uname());
+      allow create: if isUser() && getAfter(path('fv_visits', id)).data.username == uname();
+      allow update: if isUser()
+        && get(path('fv_visits', id)).data.username == uname()
+        && get(path('fv_visits', id)).data.status == 'berlangsung'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['out_photo', 'signature']);
+      allow delete: if isMgr();
     }
   }
 }
