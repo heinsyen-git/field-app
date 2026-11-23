@@ -16,6 +16,10 @@ service cloud.firestore {
     function isMgr() { return isUser() && acct().role == 'manager'; }
     // aktivasi pertama: hanya selama dokumen fv_settings/auth belum ada
     function bootstrapping() { return signedIn() && !exists(path('fv_settings', 'auth')); }
+    // Admin utama = akun yang melakukan aktivasi keamanan (fv_settings/auth.by)
+    function ownerU() { return get(path('fv_settings', 'auth')).data.by; }
+    // manager boleh mengelola akun u, kecuali akun Admin utama milik orang lain
+    function canManage(u) { return isMgr() && (u != ownerU() || u == uname()); }
 
     match /fv_settings/{id} {
       allow get: if true;
@@ -28,16 +32,17 @@ service cloud.firestore {
     match /fv_login/{u} {
       allow get: if true;
       allow list: if isMgr();
-      allow create, update: if isMgr()
+      allow create, update: if canManage(u)
         || (bootstrapping() && u == uname() && request.resource.data.email == request.auth.token.email);
-      allow delete: if isMgr();
+      allow delete: if canManage(u) && u != ownerU();
     }
 
     match /fv_accounts/{u} {
       allow read: if isUser();
-      allow create, update: if isMgr()
+      allow create, update: if (canManage(u) && (u != ownerU()
+            || (request.resource.data.role == 'manager' && request.resource.data.active == true)))
         || (bootstrapping() && u == uname() && request.resource.data.role == 'manager');
-      allow delete: if isMgr() && u != uname();
+      allow delete: if isMgr() && u != uname() && u != ownerU();
     }
 
     match /fv_customers/{id} {

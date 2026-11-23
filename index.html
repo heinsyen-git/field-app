@@ -576,7 +576,7 @@ async function init() {
     if (S.tab === 'pengaturan') renderContent();
   }, () => {});
   db.doc(C.flag).onSnapshot(snap => {
-    const was = S.activated; S.activated = snap.exists;
+    const was = S.activated; S.activated = snap.exists; S.ownerU = snap.exists ? (snap.data().by || null) : null;
     if (was === false && S.activated && S.authUser) { stopData(); startData(); }
     route();
   }, e => { $('#app').innerHTML = msgScreen('Database tidak bisa diakses', errMsg(e)); });
@@ -915,12 +915,12 @@ const VIEWS = {
     const pend = rows.filter(([, a]) => !a.authed).length;
     return `${pend ? `<div class="banner">${pend} akun dibuat sebelum pembaruan keamanan dan belum bisa masuk. Tekan <b>Aktifkan</b> untuk menentukan password barunya.</div>` : ''}
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nama</th><th>Username</th><th>Peran</th><th>Status</th><th></th></tr></thead><tbody>
-      ${rows.map(([u, a]) => `<tr><td><b>${esc(a.name)}</b>${u === S.me ? ' <span class="muted">(Anda)</span>' : ''}</td><td>${esc(u)}</td><td>${ROLE[a.role] || a.role}</td>
-        <td>${!a.authed ? chip('Perlu aktivasi', 'go') : a.active === false ? chip('Nonaktif', 'idle') : chip('Aktif', 'ok')}</td>
-        <td style="text-align:right;white-space:nowrap">
+      ${rows.map(([u, a]) => `<tr><td><b>${esc(a.name)}</b>${u === S.me ? ' <span class="muted">(Anda)</span>' : ''}</td><td>${esc(u)}</td><td>${u === ownerU() ? 'Admin utama' : (ROLE[a.role] || a.role)}</td>
+        <td>${!a.authed ? chip('Perlu aktivasi', 'go') : a.active === false ? chip('Nonaktif', 'idle') : chip('Aktif', 'ok')}${u === ownerU() ? ' ' + chip('🔒 Dilindungi', 'go') : ''}</td>
+        <td style="text-align:right;white-space:nowrap">${u === ownerU() && u !== S.me ? '<span class="muted" style="font-size:13px">Hanya bisa diubah pemiliknya</span>' : `
           ${!a.authed ? `<button class="btn sm primary" data-act="userForm" data-user="${esc(u)}" data-mode="activate">Aktifkan</button>` : `<button class="btn sm" data-act="userForm" data-user="${esc(u)}" data-mode="edit">Ubah</button>`}
           ${u !== S.me && a.authed ? `<button class="btn sm" data-act="userForm" data-user="${esc(u)}" data-mode="reset">Atur ulang password</button> <button class="btn sm" data-act="userToggle" data-user="${esc(u)}">${a.active === false ? 'Aktifkan' : 'Nonaktifkan'}</button>` : ''}
-          ${u !== S.me ? `<button class="btn sm bad" data-act="userDel" data-user="${esc(u)}">Hapus</button>` : ''}</td></tr>`).join('')}
+          ${u !== S.me ? `<button class="btn sm bad" data-act="userDel" data-user="${esc(u)}">Hapus</button>` : ''}`}</td></tr>`).join('')}
     </tbody></table></div>
     <p class="muted" style="font-size:13px;margin-top:12px">Password disimpan dan diperiksa oleh Firebase Authentication (Google), tidak tersimpan di database aplikasi. Pengguna bisa mengganti password sendiri di menu Akun.</p>`;
   },
@@ -1172,6 +1172,8 @@ async function createAuthUser(u, pw, fresh) {
   try { await sa.signOut(); } catch (e) {}
   return email;
 }
+const ownerU = () => S.ownerU || null;
+const OWNER_MSG = 'Akun Admin utama dilindungi dan hanya bisa diubah oleh pemiliknya sendiri.';
 const activeManagers = () => Object.values(S.accounts).filter(a => a.role === 'manager' && a.active !== false);
 function busy(f, on, label) { f.querySelectorAll('button[type=submit]').forEach(b => { b.disabled = on; if (label && on) { b.dataset.l = b.textContent; b.textContent = label; } else if (!on && b.dataset.l) b.textContent = b.dataset.l; }); }
 const FORMS = {
@@ -1285,6 +1287,7 @@ const FORMS = {
   async user(f) {
     const v = Object.fromEntries(new FormData(f)); const mode = f.dataset.mode; const edit = f.dataset.user;
     const u = edit || (v.username || '').trim().toLowerCase(); const a = S.accounts[u];
+    if (edit && edit === ownerU()) { if (S.me !== edit || mode !== 'edit') return toast(OWNER_MSG, 'bad'); v.role = 'manager'; }
     if (mode === 'new') {
       if (!/^[a-z0-9._]{3,30}$/.test(u)) return toast('Username hanya huruf kecil, angka, titik, garis bawah (3–30 karakter).', 'bad');
       if (a) return toast('Username sudah dipakai.', 'bad');
@@ -1331,6 +1334,7 @@ const FORMS = {
   async delUser(f) {
     const u = f.dataset.user, a = S.accounts[u]; if (!a) return closeModal();
     if (u === S.me) return toast('Tidak bisa menghapus akun sendiri.', 'bad');
+    if (u === ownerU()) return toast(OWNER_MSG, 'bad');
     if (a.role === 'manager' && a.active !== false && activeManagers().length <= 1) return toast('Harus ada minimal satu manager aktif.', 'bad');
     busy(f, true);
     try { const b = S.db.batch(); b.delete(S.db.doc(C.acc + '/' + u)); b.delete(S.db.doc(C.login + '/' + u)); await b.commit(); closeModal(); toast(`Akun ${a.name} dihapus.`); }
@@ -1414,6 +1418,8 @@ const ACT = {
   },
   userForm: d => {
     const u = d.user, a = u ? S.accounts[u] : null, mode = d.mode || (a ? 'edit' : 'new');
+    if (u && u === ownerU() && u !== S.me) return toast(OWNER_MSG, 'bad');
+    const own = u && u === ownerU();
     const title = { new: 'Tambah pengguna', edit: 'Ubah pengguna', activate: 'Aktifkan akun', reset: 'Atur ulang password' }[mode];
     const pwFields = `<div class="field"><label for="u-pw">${mode === 'reset' ? 'Password baru' : 'Password'}</label><input id="u-pw" type="password" name="pw" autocomplete="new-password" minlength="8" required><small>Minimal 8 karakter. Sampaikan langsung ke yang bersangkutan, jangan lewat grup.</small></div>
       <div class="field"><label for="u-pw2">Ulangi password</label><input id="u-pw2" type="password" name="pw2" autocomplete="new-password" minlength="8" required></div>`;
@@ -1422,17 +1428,20 @@ const ACT = {
     openModal(`${sheetHead(title)}<form data-form="user" data-mode="${mode}" ${u ? `data-user="${esc(u)}"` : ''} autocomplete="off"><div class="sheet-b">${info}
       ${mode === 'new' || mode === 'edit' ? `<div class="field"><label for="u-name">Nama lengkap</label><input id="u-name" type="text" name="name" value="${esc(a?.name || '')}" required></div>` : `<p><b>${esc(a.name)}</b> (${esc(u)})</p>`}
       ${mode === 'new' ? `<div class="field"><label for="u-user">Username</label><input id="u-user" type="text" name="username" autocapitalize="none" required><small>Huruf kecil, angka, titik, garis bawah.</small></div>` : ''}
-      ${mode === 'new' || mode === 'edit' ? `<div class="field"><label for="u-role">Peran</label><select id="u-role" name="role"><option value="staff">Petugas lapangan</option><option value="manager" ${a?.role === 'manager' ? 'selected' : ''}>Manager</option></select></div>` : ''}
+      ${own ? '<p class="muted" style="margin-top:0">Peran Admin utama tetap Manager. Ganti password lewat tombol Password.</p><input type="hidden" name="role" value="manager">' : ''}
+      ${!own && (mode === 'new' || mode === 'edit') ? `<div class="field"><label for="u-role">Peran</label><select id="u-role" name="role"><option value="staff">Petugas lapangan</option><option value="manager" ${a?.role === 'manager' ? 'selected' : ''}>Manager</option></select></div>` : ''}
       ${mode === 'edit' ? '' : pwFields}
     </div><div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="submit">${{ new: 'Buat akun', edit: 'Simpan perubahan', activate: 'Aktifkan akun', reset: 'Atur ulang' }[mode]}</button></div></form>`);
   },
   async userToggle(d) {
     const a = S.accounts[d.user]; if (!a) return;
+    if (d.user === ownerU()) return toast(OWNER_MSG, 'bad');
     if (a.active !== false && a.role === 'manager' && activeManagers().length <= 1) return toast('Harus ada minimal satu manager aktif.', 'bad');
     try { await S.db.doc(C.acc + '/' + d.user).update({ active: a.active === false }); } catch (e) { toast(errMsg(e), 'bad'); }
   },
   userDel: d => {
     const a = S.accounts[d.user]; if (!a) return;
+    if (d.user === ownerU()) return toast(OWNER_MSG, 'bad');
     openModal(`${sheetHead('Hapus pengguna?')}<form data-form="delUser" data-user="${esc(d.user)}"><div class="sheet-b"><p style="margin-top:0">Akun <b>${esc(a.name)}</b> (${esc(d.user)}) akan dihapus permanen dan tidak bisa login lagi.</p><p class="muted" style="font-size:13.5px">Riwayat kunjungan yang sudah tercatat tetap tersimpan dengan nama petugas ini. Jika hanya ingin menghentikan sementara, gunakan <b>Nonaktifkan</b>.</p></div>
       <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn bad" type="submit">Hapus permanen</button></div></form>`);
   },
