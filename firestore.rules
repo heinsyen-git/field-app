@@ -60,7 +60,8 @@ service cloud.firestore {
         && request.resource.data.username == uname()
         && request.resource.data.status == 'berlangsung'
         && request.resource.data.out == null
-        && request.resource.data['in'].server == request.time;
+        && request.resource.data['in'].server == request.time
+        || (isMgr() && request.resource.data.restored == true);
       // petugas hanya menambahkan check-out satu kali; manager hanya boleh menautkan customer
       allow update: if (isUser() && resource.data.username == uname()
             && resource.data.status == 'berlangsung'
@@ -74,7 +75,8 @@ service cloud.firestore {
     match /fv_photos/{id} {
       allow read: if isMgr()
         || (isUser() && get(path('fv_visits', id)).data.username == uname());
-      allow create: if isUser() && getAfter(path('fv_visits', id)).data.username == uname();
+      allow create: if (isUser() && getAfter(path('fv_visits', id)).data.username == uname())
+        || (isMgr() && getAfter(path('fv_visits', id)).data.restored == true);
       allow update: if isUser()
         && get(path('fv_visits', id)).data.username == uname()
         && get(path('fv_visits', id)).data.status == 'berlangsung'

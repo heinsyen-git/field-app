@@ -69,7 +69,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .field{display:grid;gap:6px;margin-bottom:14px}
 .field label,.field .lbl{font-weight:600;font-size:13.5px}
 .field small{color:var(--ink-2);font-size:12.5px}
-input[type=text],input[type=password],input[type=date],select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+input[type=text],input[type=password],input[type=date],input[type=month],select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 textarea{resize:vertical;min-height:84px}
 input:focus,select:focus,textarea:focus{border-color:var(--brand);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 25%,transparent)}
 
@@ -807,7 +807,7 @@ function visitCard(v, mgr) {
     <div class="rep-photos three">${thumb(v, 'in', mm.in_photo, 'Lokasi', ld ? 'Memuat foto…' : 'Tanpa foto lokasi')}${thumb(v, 'selfie', mm.in_selfie, 'Selfie', ld ? 'Memuat…' : 'Tanpa selfie')}${thumb(v, 'out', mm.out_photo, 'Selesai', ld && v.out ? 'Memuat…' : v.out ? 'Tanpa foto selesai' : 'Belum check-out')}</div>
     <div class="rep-body">
       <div class="rep-head"><div><h3>${esc(v.customerName)}</h3>${v.customerAddress ? `<p class="meta">${esc(v.customerAddress)}</p>` : ''}</div>
-        <div style="display:grid;gap:4px;justify-items:end">${v.status === 'selesai' ? chip('Selesai', 'ok') : chip('Sedang berkunjung', 'go')}${locChip(v.in)}${fl.length ? chip(`${fl.length} peringatan`, 'bad') : ''}</div></div>
+        <div style="display:grid;gap:4px;justify-items:end">${v.status === 'selesai' ? chip('Selesai', 'ok') : chip('Sedang berkunjung', 'go')}${locChip(v.in)}${v.restored ? chip('Dipulihkan dari arsip', 'idle') : ''}${fl.length ? chip(`${fl.length} peringatan`, 'bad') : ''}</div></div>
       <dl class="kv">
         ${mgr ? `<dt>Petugas</dt><dd><b>${esc(v.staffName)}</b></dd>` : ''}
         <dt>Check-in</dt><dd>${ptLine(v.in)}</dd>
@@ -933,7 +933,7 @@ const VIEWS = {
         <button class="btn primary" type="submit">Simpan</button>
       </form></div>
       <div class="card" style="max-width:560px;margin-top:14px"><h3>Tentang data lokasi</h3>
-      <p class="loc">Posisi petugas dicatat saat <b>check-in</b> dan <b>check-out</b>, lengkap dengan akurasi GPS dan jarak ke titik customer. Waktu yang dipakai adalah <b>waktu server</b>, sehingga tidak bisa diakali dengan mengubah jam HP. Foto bukti diberi cap waktu dan koordinat secara otomatis.</p></div>`;
+      <p class="loc">Posisi petugas dicatat saat <b>check-in</b> dan <b>check-out</b>, lengkap dengan akurasi GPS dan jarak ke titik customer. Waktu yang dipakai adalah <b>waktu server</b>, sehingga tidak bisa diakali dengan mengubah jam HP. Foto bukti diberi cap waktu dan koordinat secara otomatis.</p></div>${archiveCard()}`;
   }
 };
 const filteredVisits = () => S.visits.filter(v => !S.staffFilter || v.username === S.staffFilter);
@@ -1195,7 +1195,10 @@ const FORMS = {
       await b.commit();
       if (S.settingsExists && v.office.trim() && v.office.trim() !== S.settings.officeName) await S.db.doc(C.set).update({ officeName: v.office.trim() });
       toast('Keamanan aktif. Selamat datang!');
-    } catch (e) { toast(errMsg(e), 'bad'); busy(f, false); }
+    } catch (e) {
+      toast(e.code === 'permission-denied' ? 'Aktivasi ditolak database. Pasang Rules terbaru (file firestore.rules) di Firebase, lalu ulangi aktivasi dengan username dan password yang sama.' : errMsg(e), 'bad');
+      busy(f, false);
+    }
   },
   async login(f) {
     const v = Object.fromEntries(new FormData(f)); const u = v.username.trim().toLowerCase();
@@ -1591,6 +1594,213 @@ function periodHTML(P) {
     <div class="rpt-sign"><div>Disusun oleh,<div class="ln">${esc(me().name)}</div>Manager</div><div>Diperiksa dan disetujui oleh,<div class="ln">${P.boss ? esc(P.boss) : '(..............................)'}</div>Tanggal: ....................</div></div>
     <p class="rpt-foot">Laporan disusun otomatis dari sistem Kunjungan Lapangan. Waktu berdasarkan server, lokasi dari GPS perangkat petugas. Rincian kunjungan beserta foto dapat dilihat di menu Pemantauan.</p></div>`;
 }
+
+
+/* ---------- Arsip & backup bulanan ---------- */
+const ARCH = { name: 'kunjungan-lapangan', label: 'Kunjungan Lapangan', what: 'data kunjungan', main: 'fv_visits', photos: 'fv_photos', mark: true,
+  photoIds: v => v.media ? [v.id] : [],
+  title: d => `${d.date}, ${d.customerName}`,
+  sub: d => `Petugas: ${d.staffName}. Keperluan: ${d.purpose || '-'}. Status: ${d.status}. Check-in: ${fmtTimeS(ptTime(d.in))}. Check-out: ${d.out ? fmtTimeS(ptTime(d.out)) : '-'}. Hasil: ${(d.out && d.out.result) || '-'}. PIC: ${(d.out && d.out.picName) || '-'}.`,
+  save: (n, blob) => download(n, blob, 'application/zip') };
+let ARC_MONTH = (() => { const d = new Date(); d.setDate(0); return dstr(d).slice(0, 7); })();
+const ARC_DONE = {};
+function loadJSZip() {
+  return window.JSZip ? Promise.resolve(window.JSZip) : new Promise((res, rej) => {
+    const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    sc.onload = () => res(window.JSZip); sc.onerror = () => rej(new Error('Library ZIP gagal dimuat. Periksa koneksi internet.')); document.head.appendChild(sc);
+  });
+}
+function archiveCard() {
+  const d = ARC_DONE[ARC_MONTH];
+  return `<div class="card" style="max-width:560px;margin-top:14px">
+    <h3>Arsip &amp; backup bulanan</h3>
+    <p class="loc">Unduh semua data dan foto satu bulan menjadi satu file ZIP. Isinya: <b>laporan.html</b> (bisa dibuka di browser) dan <b>data.json</b> beserta folder foto (untuk dipulihkan). Simpan file itu di NAS atau Google Drive, lalu data bulan tersebut boleh dihapus dari database untuk menghemat kuota.</p>
+    <div class="field" style="max-width:220px"><label for="arc-month">Bulan</label><input id="arc-month" type="month" data-arc="month" value="${ARC_MONTH}" max="${today().slice(0, 7)}"></div>
+    ${d ? `<p class="note" style="margin:0 0 12px">✓ Backup bulan ${ARC_MONTH} (${d.n} data) sudah diunduh di sesi ini.</p>` : ''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn primary" data-act="arcBackup">${ICON.dl}Unduh backup</button>
+      <button class="btn bad" data-act="arcDeleteAsk">Hapus data bulan ini…</button>
+    </div>
+    <p class="loc" style="margin:16px 0 6px"><b>Pulihkan dari file backup</b>: data yang masih ada di database tidak akan ditimpa.</p>
+    <label class="btn" style="position:relative"><input type="file" accept=".zip,application/zip" data-arc="restore" class="sr">Pilih file backup (.zip)</label>
+  </div>`;
+}
+const arcRange = m => [m + '-01', m + '-31'];
+async function arcFetch(m) {
+  const [a, b] = arcRange(m);
+  const snap = await S.db.collection(ARCH.main).where('date', '>=', a).where('date', '<=', b).get();
+  return snap.docs.map(d => ({ id: d.id, data: d.data() }));
+}
+async function arcPool(items, n, fn) { let i = 0; await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } })); }
+function arcBox(title, msg) {
+  if (!$('#arc-msg')) openModal(`${sheetHead(title)}<div class="sheet-b"><p id="arc-msg" style="margin-top:0"></p><div class="bucket" style="margin:0"><i id="arc-bar" style="width:0%"></i></div><p class="muted" style="font-size:13px">Jangan tutup halaman ini sampai selesai.</p></div>`);
+  if (msg != null) $('#arc-msg').textContent = msg;
+}
+const arcBar = p => { const b = $('#arc-bar'); if (b) b.style.width = Math.min(100, Math.round(p * 100)) + '%'; };
+function arcPack(v, files, base) {
+  if (v && typeof v.toDate === 'function') return { __ts: v.toDate().toISOString() };
+  if (typeof v === 'string' && v.startsWith('data:image')) { const n = `foto/${base}_${Object.keys(files).length + 1}.jpg`; files[n] = v; return { __file: n }; }
+  if (Array.isArray(v)) return v.map(x => arcPack(x, files, base));
+  if (v && typeof v === 'object') { const o = {}; for (const k in v) o[k] = arcPack(v[k], files, base); return o; }
+  return v;
+}
+function arcUnpack(v, imgs) {
+  if (Array.isArray(v)) return v.map(x => arcUnpack(x, imgs));
+  if (v && typeof v === 'object') {
+    if (v.__ts) return firebase.firestore.Timestamp ? firebase.firestore.Timestamp.fromDate(new Date(v.__ts)) : v.__ts;
+    if (v.__file) return imgs[v.__file] || null;
+    const o = {}; for (const k in v) o[k] = arcUnpack(v[k], imgs); return o;
+  }
+  return v;
+}
+function arcFiles(v, acc) { acc = acc || []; if (v && typeof v === 'object') { if (v.__file) acc.push(v.__file); else for (const k in v) arcFiles(v[k], acc); } return acc; }
+function arcHTML(out, mains) {
+  const rows = mains.slice().sort((a, b) => (a.data.date || '').localeCompare(b.data.date || '')).map(x => {
+    const imgs = [...arcFiles(out.docs[x.id]), ...ARCH.photoIds({ id: x.id, ...x.data }).flatMap(pid => arcFiles(out.photos[pid]))];
+    return `<section><h3>${esc(ARCH.title(x.data))}</h3><p>${esc(ARCH.sub(x.data))}</p><div class="g">${imgs.map(f => `<a href="${f}" target="_blank"><img src="${f}" loading="lazy" alt=""></a>`).join('')}</div></section>`;
+  }).join('');
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Arsip ${esc(ARCH.label)} ${out.month}</title>
+<style>body{font:14px/1.5 Arial,sans-serif;max-width:1000px;margin:24px auto;padding:0 16px;color:#1a1a1a}h1{margin:0}section{border:1px solid #ccc;border-radius:8px;padding:10px 12px;margin:12px 0;break-inside:avoid}h3{margin:0 0 4px}p{margin:0 0 8px;color:#444}.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}.g img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;background:#eee}</style></head>
+<body><h1>Arsip ${esc(ARCH.label)}: ${out.month}</h1><p>${esc(S.settings.officeName || '')}. ${mains.length} data. Diekspor ${esc(new Date(out.exportedAt).toLocaleString('id-ID'))} oleh ${esc(out.exportedByName || out.exportedBy)}.</p>${rows}</body></html>`;
+}
+async function arcBackup() {
+  const m = ARC_MONTH; if (!/^\d{4}-\d{2}$/.test(m)) return toast('Pilih bulan terlebih dulu.', 'bad');
+  arcBox('Backup ' + m, 'Menyiapkan…');
+  try {
+    const JSZip = await loadJSZip();
+    $('#arc-msg').textContent = 'Mengambil data…';
+    const mains = await arcFetch(m);
+    if (!mains.length) { closeModal(); return toast(`Tidak ada data pada bulan ${m}.`, 'bad'); }
+    const ids = mains.flatMap(x => ARCH.photoIds({ id: x.id, ...x.data }));
+    const photos = {}; let n = 0;
+    await arcPool(ids, 6, async id => {
+      try { const sn = await S.db.doc(ARCH.photos + '/' + id).get(); if (sn.exists) photos[id] = sn.data(); } catch (e) {}
+      n++; arcBar(n / Math.max(1, ids.length) * .7); const el = $('#arc-msg'); if (el) el.textContent = `Mengambil foto ${n} dari ${ids.length}…`;
+    });
+    const files = {}, out = { app: ARCH.name, version: 1, month: m, exportedAt: new Date().toISOString(), exportedBy: S.me, exportedByName: me().name, main: ARCH.main, photosCol: ARCH.photos, docs: {}, photos: {} };
+    mains.forEach(x => { out.docs[x.id] = arcPack(x.data, files, x.id); });
+    for (const id in photos) out.photos[id] = arcPack(photos[id], files, id);
+    const zip = new JSZip();
+    zip.file('data.json', JSON.stringify(out));
+    zip.file('laporan.html', arcHTML(out, mains));
+    for (const f in files) zip.file(f, files[f].split(',')[1], { base64: true });
+    $('#arc-msg').textContent = 'Menyusun file ZIP…';
+    const blob = await zip.generateAsync({ type: 'blob' }, meta => arcBar(.7 + meta.percent / 333));
+    await ARCH.save(`backup-${ARCH.name}-${m}.zip`, blob);
+    ARC_DONE[m] = { n: mains.length };
+    closeModal(); renderContent();
+    toast(`Backup ${mains.length} data bulan ${m} (${(blob.size / 1048576).toFixed(1)} MB) diunduh. Simpan di NAS atau Google Drive.`);
+  } catch (e) { closeModal(); toast(errMsg(e), 'bad'); }
+}
+function arcDeleteAsk() {
+  const m = ARC_MONTH; if (!/^\d{4}-\d{2}$/.test(m)) return toast('Pilih bulan terlebih dulu.', 'bad');
+  if (m >= today().slice(0, 7)) return toast('Data bulan berjalan tidak bisa dihapus. Pilih bulan yang sudah lewat.', 'bad');
+  const done = ARC_DONE[m];
+  openModal(`${sheetHead('Hapus data bulan ' + m + '?')}<form data-form="arcDel"><div class="sheet-b">
+    <p style="margin-top:0">Semua ${esc(ARCH.what)} beserta fotonya pada bulan <b>${m}</b> akan <b>dihapus permanen</b> dari database. Data yang sudah dihapus hanya bisa dikembalikan dari file backup.</p>
+    ${done ? `<p class="note">✓ Backup bulan ini (${done.n} data) sudah diunduh di sesi ini.</p>` : `<label class="checkrow"><input type="checkbox" name="have"><span>Saya sudah menyimpan file backup bulan ${m} di tempat yang aman.</span></label>`}
+    <div class="field" style="margin-top:12px"><label for="arc-confirm">Ketik <b>HAPUS</b> untuk konfirmasi</label><input id="arc-confirm" type="text" name="confirm" autocomplete="off" autocapitalize="characters"></div>
+  </div><div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn bad" type="submit">Hapus permanen</button></div></form>`);
+}
+async function arcDelete(f) {
+  const m = ARC_MONTH, fd = new FormData(f);
+  if (!ARC_DONE[m] && fd.get('have') !== 'on') return toast('Unduh atau pastikan backup bulan ini sudah tersimpan.', 'bad');
+  if ((fd.get('confirm') || '').trim().toUpperCase() !== 'HAPUS') return toast('Ketik HAPUS untuk konfirmasi.', 'bad');
+  closeModal(); arcBox('Menghapus data ' + m, 'Mengambil daftar data…');
+  try {
+    const mains = await arcFetch(m);
+    const refs = [];
+    mains.forEach(x => { ARCH.photoIds({ id: x.id, ...x.data }).forEach(pid => refs.push(S.db.doc(ARCH.photos + '/' + pid))); refs.push(S.db.doc(ARCH.main + '/' + x.id)); });
+    for (let i = 0; i < refs.length; i += 400) {
+      const b = S.db.batch(); refs.slice(i, i + 400).forEach(r => b.delete(r)); await b.commit();
+      arcBar((i + 400) / refs.length); $('#arc-msg').textContent = `Menghapus… ${Math.min(i + 400, refs.length)} dari ${refs.length}`;
+    }
+    closeModal(); toast(`${mains.length} data bulan ${m} dihapus dari database.`);
+  } catch (e) { closeModal(); toast(errMsg(e), 'bad'); }
+}
+async function arcRestore(file) {
+  try {
+    const JSZip = await loadJSZip();
+    const zip = await JSZip.loadAsync(file);
+    const dj = zip.file('data.json'); if (!dj) return toast('File ini bukan backup dari aplikasi ini.', 'bad');
+    const out = JSON.parse(await dj.async('string'));
+    if (out.app !== ARCH.name) return toast(`File ini backup aplikasi lain (${out.app}).`, 'bad');
+    const ids = Object.keys(out.docs);
+    openModal(`${sheetHead('Pulihkan backup ' + out.month + '?')}<div class="sheet-b"><p style="margin-top:0">File berisi <b>${ids.length}</b> data bulan <b>${esc(out.month)}</b>, diekspor ${esc(new Date(out.exportedAt).toLocaleString('id-ID'))}. Data yang masih ada di database dilewati, tidak ditimpa.</p></div>
+      <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="button" data-act="arcRestoreGo">Pulihkan</button></div>`);
+    ARC_PENDING = { zip, out };
+  } catch (e) { toast('File backup tidak bisa dibaca: ' + (e.message || e), 'bad'); }
+}
+let ARC_PENDING = null;
+async function arcRestoreGo() {
+  const P = ARC_PENDING; if (!P) return; ARC_PENDING = null;
+  closeModal(); arcBox('Memulihkan data ' + P.out.month, 'Memulai…');
+  const ids = Object.keys(P.out.docs); let done = 0, skip = 0;
+  const img = async n => { const zf = P.zip.file(n); return zf ? 'data:image/jpeg;base64,' + await zf.async('base64') : null; };
+  try {
+    let b = S.db.batch(), ops = 0, bytes = 0;
+    for (const id of ids) {
+      const ref = S.db.doc(ARCH.main + '/' + id);
+      const ex = await ref.get().catch(() => null);
+      if (ex && ex.exists) { skip++; continue; }
+      const packed = P.out.docs[id], imgs = {};
+      for (const n of arcFiles(packed)) imgs[n] = await img(n);
+      const data = arcUnpack(packed, imgs); if (ARCH.mark) data.restored = true;
+      for (const pid of ARCH.photoIds({ id, ...data })) {
+        const pp = P.out.photos[pid]; if (!pp) continue;
+        const pi = {}; for (const n of arcFiles(pp)) { pi[n] = await img(n); bytes += (pi[n] || '').length; }
+        b.set(S.db.doc(ARCH.photos + '/' + pid), arcUnpack(pp, pi)); ops++;
+      }
+      b.set(ref, data); ops++; bytes += JSON.stringify(packed).length; done++;
+      if (ops >= 300 || bytes > 6e6) { await b.commit(); b = S.db.batch(); ops = 0; bytes = 0; }
+      arcBar((done + skip) / ids.length); const el = $('#arc-msg'); if (el) el.textContent = `Memulihkan ${done + skip} dari ${ids.length}…`;
+    }
+    if (ops) await b.commit();
+    closeModal(); toast(`${done} data dipulihkan${skip ? `, ${skip} dilewati karena masih ada` : ''}.`);
+  } catch (e) { closeModal(); toast('Pemulihan berhenti: ' + errMsg(e), 'bad'); }
+}
+ACT.arcBackup = () => arcBackup();
+ACT.arcDeleteAsk = () => arcDeleteAsk();
+ACT.arcRestoreGo = () => arcRestoreGo();
+FORMS.arcDel = f => arcDelete(f);
+document.addEventListener('change', e => {
+  const t = e.target; if (!t.dataset || !t.dataset.arc) return;
+  if (t.dataset.arc === 'month') { ARC_MONTH = t.value; t.blur(); renderContent(); }
+  if (t.dataset.arc === 'restore') { const f = t.files && t.files[0]; t.value = ''; if (f) arcRestore(f); }
+});
+
+/* ---------- tombol Kembali (Back) di HP ---------- */
+(function () {
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  if (!standalone && !TOUCH.matches) return;
+  let armed = false, exiting = false;
+  const st = document.createElement('style');
+  st.textContent = '#modal .sheet.mini{left:50%!important;top:auto!important;bottom:calc(16px + env(safe-area-inset-bottom,0px))!important;transform:translateX(-50%)!important;width:min(420px,calc(100vw - 24px))!important;height:auto!important;max-height:none!important;border-radius:18px!important}#modal .sheet.mini .sheet-h{padding-top:18px!important;border-bottom:0!important}#modal .sheet.mini .sheet-f{padding-bottom:18px!important}';
+  document.head.appendChild(st);
+  // Chrome hanya menghormati riwayat yang dibuat setelah interaksi pengguna, jadi "jebakan" Back dipasang saat layar disentuh
+  const arm = () => { if (armed) return; try { history.pushState({ kb: Date.now() }, ''); armed = true; } catch (e) {} };
+  ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, arm, true));
+  const homeTab = () => isMgr() ? 'pantau' : 'kunjungan';
+  const exitHTML = () => `${sheetHead('Keluar dari aplikasi?')}<div class="sheet-b"><p style="margin-top:0">Tekan <b>Kembali</b> sekali lagi atau tombol <b>Keluar</b> untuk menutup aplikasi. Anda tetap dalam keadaan login.</p></div>
+    <div class="sheet-f"><button class="btn" type="button" data-act="close">Batal</button><button class="btn primary" type="button" data-act="exitApp">Keluar</button></div>`;
+  window.addEventListener('popstate', () => {
+    armed = false;
+    if (exiting) { exiting = false; return; }
+    if (!$('#printRoot').hidden) { closePrint(); return arm(); }
+    const m = $('#modal');
+    if (m.classList.contains('open')) { const wasExit = m.dataset.exit; closeModal(); if (!wasExit) arm(); return; }
+    if (S.screen && S.screen.startsWith('app') && S.tab && S.tab !== homeTab()) { setTab(homeTab()); return arm(); }
+    openModal(exitHTML()); m.dataset.exit = '1'; m.querySelector('.sheet')?.classList.add('mini');
+  });
+  const baseClose = closeModal;
+  closeModal = function () { baseClose.apply(this, arguments); delete $('#modal').dataset.exit; };
+  ACT.exitApp = () => {
+    closeModal();
+    if (armed) { exiting = true; armed = false; history.back(); }
+    try { window.close(); } catch (e) {}
+    setTimeout(() => toast('Tekan tombol Kembali sekali lagi untuk keluar.'), 300);
+  };
+})();
 
 init();
 </script>

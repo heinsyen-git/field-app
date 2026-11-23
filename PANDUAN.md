@@ -148,3 +148,17 @@ Agar kode aplikasi tidak bisa dilihat publik:
 4. Di setiap HP petugas: hapus ikon aplikasi lama, buka link baru di Chrome, lalu **Pasang aplikasi di HP**.
 5. Setelah semua HP pindah, ubah repository GitHub **field-app** menjadi **Private** (Settings, lalu General, lalu Danger Zone, lalu Change visibility). GitHub Pages lama otomatis berhenti.
 6. Untuk pembaruan berikutnya, jalankan lagi `firebase deploy --only hosting` dari folder yang sama.
+
+---
+
+# Arsip & backup bulanan
+
+Menu **Pengaturan** (manager), bagian **Arsip & backup bulanan**:
+1. Pilih **Bulan**, lalu tekan **Unduh backup**. Anda akan mendapat file `backup-kunjungan-lapangan-YYYY-MM.zip` berisi:
+   - `laporan.html`: dibuka dengan klik dua kali setelah ZIP diekstrak, menampilkan semua kunjungan beserta foto.
+   - `data.json` dan folder `foto/`: untuk dipulihkan ke aplikasi.
+2. Simpan file ZIP di **NAS kantor** dan/atau **Google Drive**.
+3. Tekan **Hapus data bulan ini…**, ketik **HAPUS**, lalu konfirmasi. Bulan yang sedang berjalan tidak bisa dihapus.
+4. Untuk mengembalikan data: tekan **Pilih file backup (.zip)**, lalu **Pulihkan**. Data yang dipulihkan diberi label "Dipulihkan dari arsip".
+
+Lakukan backup dan hapus dari **komputer** (bukan HP), karena file satu bulan bisa berukuran ratusan MB.
