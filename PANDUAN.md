@@ -162,3 +162,13 @@ Menu **Pengaturan** (manager), bagian **Arsip & backup bulanan**:
 4. Untuk mengembalikan data: tekan **Pilih file backup (.zip)**, lalu **Pulihkan**. Data yang dipulihkan diberi label "Dipulihkan dari arsip".
 
 Lakukan backup dan hapus dari **komputer** (bukan HP), karena file satu bulan bisa berukuran ratusan MB.
+
+---
+
+# Mode perjalanan & Timeline
+
+**Petugas:** di menu Kunjungan, tekan **Mulai perjalanan** saat berangkat dan **Selesai** di akhir hari. Selama aktif, aplikasi harus tetap terbuka (layar dijaga tetap menyala otomatis). Posisi dicatat setiap berpindah ±30 m atau setiap 2 menit.
+
+**Manager:** menu **Timeline**, lalu pilih tanggal dan petugas. Tampil peta rute (hijau = mulai, merah = posisi terakhir/selesai, pin bernomor = kunjungan) dan urutan kegiatan: perjalanan (jarak, durasi), tiba di customer, dan seterusnya. Bagian "data terputus" menandakan aplikasi ditutup atau layar mati lebih dari 10 menit.
+
+Perlu Rules terbaru (bagian `fv_tracks`) dari file `firestore.rules`.

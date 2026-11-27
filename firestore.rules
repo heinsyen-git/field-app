@@ -72,6 +72,16 @@ service cloud.firestore {
       allow delete: if isMgr();
     }
 
+    match /fv_tracks/{id} {
+      allow read: if isMgr() || (isUser() && resource.data.username == uname());
+      allow create: if isUser() && request.resource.data.username == uname()
+        && id == request.resource.data.date + '_' + uname();
+      allow update: if isUser() && resource.data.username == uname()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['points', 'active', 'updatedAt', 'endedAt', 'startedAt', 'staffName']);
+      allow delete: if isMgr();
+    }
+
     match /fv_photos/{id} {
       allow read: if isMgr()
         || (isUser() && get(path('fv_visits', id)).data.username == uname());

@@ -354,6 +354,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
 .pin.go{background:#D97706}.pin.ok{background:#1E8A52}.pin.bad{background:#C0392B}.pin.out{background:#6D4ACF}.pin.unk{background:#5B6B82}
 .gps{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;gap:5px}
 .gps.bad{background:var(--bad-bg);border-color:transparent;color:var(--bad)}
+.step > div{min-width:0}
+.gps{min-width:0;overflow-wrap:anywhere}
 .gps .co{font:700 16px ui-monospace,"SF Mono",Menlo,Consolas,monospace;letter-spacing:.01em}
 .gps .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .spin.sm{width:16px;height:16px;border-width:3px;margin:0;display:inline-block;vertical-align:-3px}
@@ -379,6 +381,19 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
 .chip.go{background:var(--wait-bg);color:var(--wait)}
 .coord-help{font-size:12.5px;color:var(--ink-2)}
 .ph.single{aspect-ratio:3/4}
+.trip{display:flex;gap:12px;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:14px}
+.trip.on{border-color:var(--ok);background:var(--ok-bg)}
+.trip-t{display:grid;gap:2px;font-size:13px;min-width:0}
+.trip-t b{font-size:15px}.trip.on .trip-t b{color:var(--ok)}
+.trip .btn{flex:none}
+.tl{list-style:none;margin:0 0 12px;padding:0 0 0 22px;position:relative;background:var(--surface);border-radius:14px;box-shadow:var(--shadow);padding:16px 16px 16px 40px}
+.tl::before{content:"";position:absolute;left:23px;top:22px;bottom:22px;width:3px;background:var(--line);border-radius:3px}
+.tl li{position:relative;padding:8px 0;font-size:14px}
+.tl li::before{content:"";position:absolute;left:-23px;top:13px;width:11px;height:11px;border-radius:50%;background:var(--surface);border:3px solid var(--brand)}
+.tl li.tl-move::before{border-color:var(--line);background:var(--line);width:7px;height:7px;left:-21px}
+.tl li.tl-move{color:var(--ink-2);font-size:13px}
+.tl li.start::before{border-color:#1E8A52}.tl li.end::before{border-color:#C0392B}.tl li.stop::before{border-color:var(--mop);background:var(--mop)}
+.tl b{margin-right:6px}
 .rep.wide{grid-template-columns:minmax(270px,390px) 1fr}
 .rep-photos.three{grid-template-columns:1fr 1fr 1fr}
 @media (max-width:640px){.rep.wide{grid-template-columns:1fr}}
@@ -619,8 +634,8 @@ function subActive() {
     S.active = snap.docs.map(d => ({ id:d.id, ...d.data() })).sort(byInDesc); refresh();
   }, e => toast('Status kunjungan tidak bisa dimuat: ' + errMsg(e), 'bad'));
 }
-function setDate(d) { if (d && d !== S.date) { S.date = d; mapFit = true; subVisits(); } }
-function refresh() { if (S.screen && S.screen.startsWith('app')) { renderContent(); if (S.tab === 'pantau') updateMap(); } }
+function setDate(d) { if (d && d !== S.date) { S.date = d; mapFit = true; subVisits(); if (S.tab === 'timeline') { tlSub(); setTimeout(tlDraw, 300); } } }
+function refresh() { if (S.screen && S.screen.startsWith('app')) { renderContent(); if (S.tab === 'pantau') updateMap(); if (S.tab === 'timeline') tlDraw(); } }
 
 function route() {
   let scr;
@@ -672,7 +687,8 @@ function paint(scr) {
   }
   const brand = `<div class="brand"><span class="logo">${ICON.logo}</span><div style="min-width:0"><div class="b-title">Kunjungan Lapangan</div><div class="b-sub" id="officeName">${esc(S.settings.officeName || '')}</div></div></div>`;
   if (isMgr()) {
-    const tabs = [['pantau','Pemantauan',ICON.map], ['customer','Customer',ICON.bld], ['laporan','Laporan periode',ICON.doc], ['pengguna','Pengguna',ICON.users], ['pengaturan','Pengaturan',ICON.gear]];
+    const tabs = [['pantau','Pemantauan',ICON.map], ['customer','Customer',ICON.bld], ['timeline','Timeline',ICON.hist], ['laporan','Laporan periode',ICON.doc], ['pengguna','Pengguna',ICON.users]];
+    if (S.me === ownerU()) tabs.push(['pengaturan','Pengaturan',ICON.gear]);   // Pengaturan hanya untuk Admin utama
     if (!tabs.some(t => t[0] === S.tab)) S.tab = 'pantau';
     app.innerHTML = `<div class="desk">
       <aside class="side">
@@ -687,6 +703,7 @@ function paint(scr) {
       <div class="desk-main"><main><div class="wrap">
         <h1 class="page-title" id="pageTitle"></h1><p class="page-date" id="pageSub"></p>
         <div id="toolbar" class="toolbar"></div>
+        <div id="tlWrap" class="mapwrap" hidden><div id="tlmap" style="height:440px"></div></div>
         <div id="mapWrap" class="mapwrap" hidden><div id="map"></div>
           <div class="map-legend"><span><i style="background:#1E8A52"></i>Check-in di lokasi</span><span><i style="background:#C0392B"></i>Check-in di luar radius</span><span><i style="background:#D97706"></i>Sedang berkunjung</span><span><i style="background:#6D4ACF"></i>Check-out</span><span><i style="background:#5B6B82"></i>Customer belum ada titik</span><span><i style="background:transparent;border:2px solid #5B6B82"></i>Radius customer</span></div></div>
         <div id="content"></div>
@@ -700,18 +717,20 @@ function paint(scr) {
       <nav class="bnav" role="tablist"><div class="bnav-in">${tabs.map(([k, l, ic]) => `<button class="tab" role="tab" data-act="tab" data-tab="${k}">${ic}<span>${l}</span></button>`).join('')}</div></nav>
     </div>`;
   }
-  subActive(); subVisits();
+  subActive(); subVisits(); setTimeout(tripResume, 500);
   updateHeader();
   setTab(S.tab);
 }
 function updateHeader() { const n = $('#whoName'); if (n) n.textContent = me().name || ''; }
-const TITLES = { pantau:['Pemantauan kunjungan','Posisi check-in dan check-out petugas, foto bukti, dan waktu server.'], customer:['Customer','Daftar customer beserta titik lokasi dan radius absen.'], laporan:['Laporan periode','Susun laporan dari data sistem untuk rentang tanggal tertentu, lalu cetak sebagai PDF untuk persetujuan atasan.'], pengguna:['Pengguna','Akun manager dan petugas lapangan.'], pengaturan:['Pengaturan','Identitas perusahaan dan radius default.'] };
+const TITLES = { timeline:['Timeline perjalanan','Rute dan urutan kegiatan petugas dalam satu hari, seperti Timeline Google Maps.'], pantau:['Pemantauan kunjungan','Posisi check-in dan check-out petugas, foto bukti, dan waktu server.'], customer:['Customer','Daftar customer beserta titik lokasi dan radius absen.'], laporan:['Laporan periode','Susun laporan dari data sistem untuk rentang tanggal tertentu, lalu cetak sebagai PDF untuk persetujuan atasan.'], pengguna:['Pengguna','Akun manager dan petugas lapangan.'], pengaturan:['Pengaturan','Identitas perusahaan dan radius default.'] };
 function setTab(t) {
   S.tab = t;
   document.querySelectorAll('.tab').forEach(b => { b.classList.toggle('on', b.dataset.tab === t); b.setAttribute('aria-selected', b.dataset.tab === t); });
   if (t === 'kunjungan') setDate(today());
   const pt = $('#pageTitle'); if (pt && TITLES[t]) { pt.textContent = TITLES[t][0]; $('#pageSub').textContent = TITLES[t][1]; }
   const mw = $('#mapWrap'); if (mw) mw.hidden = t !== 'pantau';
+  const tw = $('#tlWrap'); if (tw) tw.hidden = t !== 'timeline';
+  if (t === 'timeline') { tlSub(); TL.fit = true; setTimeout(tlDraw, 40); }
   renderToolbar(); renderContent();
   if (t === 'pantau') { mapFit = true; setTimeout(updateMap, 30); }
   window.scrollTo(0, 0);
@@ -720,7 +739,8 @@ function renderToolbar() {
   const tb = $('#toolbar'); if (!tb) return;
   const dateField = `<div class="field"><label for="f-date">Tanggal</label><input id="f-date" type="date" value="${S.date}" max="${today()}" data-change="date"></div>`;
   const printBtn = `<button class="btn mop" data-act="print">${ICON.print}Cetak laporan</button>`;
-  if (S.tab === 'pantau') tb.innerHTML = dateField + `<div class="field"><label for="f-staff">Petugas</label><select id="f-staff" data-change="staff"><option value="">Semua petugas</option>${staffList().map(s => `<option value="${esc(s.u)}"${S.staffFilter === s.u ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div><div class="grow"></div><button class="btn" data-act="csv">${ICON.dl}Unduh Excel (CSV)</button>` + printBtn;
+  if (S.tab === 'timeline') tb.innerHTML = dateField + `<div class="field"><label for="f-tl">Petugas</label><select id="f-tl" data-change="tlstaff">${staffList().map(s => `<option value="${esc(s.u)}"${S.tlStaff === s.u ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>`;
+  else if (S.tab === 'pantau') tb.innerHTML = dateField + `<div class="field"><label for="f-staff">Petugas</label><select id="f-staff" data-change="staff"><option value="">Semua petugas</option>${staffList().map(s => `<option value="${esc(s.u)}"${S.staffFilter === s.u ? ' selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div><div class="grow"></div><button class="btn" data-act="csv">${ICON.dl}Unduh Excel (CSV)</button>` + printBtn;
   else if (S.tab === 'riwayat') tb.innerHTML = dateField + '<div class="grow"></div>' + printBtn;
   else if (S.tab === 'customer') tb.innerHTML = `<div class="grow"></div><button class="btn primary" data-act="custForm">${ICON.plus}Tambah customer</button>`;
   else if (S.tab === 'pengguna') tb.innerHTML = `<div class="grow"></div><button class="btn primary" data-act="userForm">${ICON.plus}Tambah pengguna</button>`;
@@ -848,8 +868,9 @@ const VIEWS = {
         <button class="btn cta" data-act="checkin">${ICON.pin}Check-in di lokasi customer</button>
       </section>`;
     }
-    if (!S.visLoaded) return top + loadingBlock();
+    if (!S.visLoaded) return tripCard() + top + loadingBlock();
     const mine = S.visits.filter(v => v.username === S.me && !S.active.some(a => a.id === v.id));
+    top = tripCard() + top;
     return top + (mine.length ? `<h2 class="sec-title">Kunjungan hari ini (${mine.length})</h2><div class="reps">${mine.map(v => visitCard(v, false)).join('')}</div>`
       : `<p class="muted" style="text-align:center">${S.active.length ? '' : 'Belum ada kunjungan hari ini.'}</p>`);
   },
@@ -894,6 +915,7 @@ const VIEWS = {
     </tbody></table></div>
     <p class="muted" style="font-size:13px;margin-top:12px">Customer tanpa titik lokasi tetap bisa dikunjungi. Setelah petugas check-in di sana, tekan <b>Jadikan titik lokasi customer</b> pada kartu kunjungannya di menu Pemantauan.</p>`;
   },
+  timeline() { return tlView(); },
   laporan() {
     const r = S.rp;
     return `<div class="card" style="max-width:720px">
@@ -925,6 +947,7 @@ const VIEWS = {
     <p class="muted" style="font-size:13px;margin-top:12px">Password disimpan dan diperiksa oleh Firebase Authentication (Google), tidak tersimpan di database aplikasi. Pengguna bisa mengganti password sendiri di menu Akun.</p>`;
   },
   pengaturan() {
+    if (S.me !== ownerU()) return `<div class="empty"><h3>🔒 Khusus Admin utama</h3><p>Menu Pengaturan (identitas kantor, backup, dan hapus data) hanya bisa diakses oleh Admin utama.</p></div>`;
     return `<div class="card" style="max-width:560px"><h3>Pengaturan umum</h3>
       <form data-form="settings">
         <div class="field"><label for="st-office">Nama perusahaan</label><input id="st-office" type="text" name="office" value="${esc(S.settings.officeName || '')}" required></div>
@@ -982,22 +1005,27 @@ const step = (n, title, body) => `<div class="step"><div class="step-n">${n}</di
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('#printRoot').hidden) closePrint(); else if ($('#modal').classList.contains('open')) closeModal(); } });
 
 /* ---------- GPS ---------- */
+const MAX_ACC = 500;   // check-in ditolak jika akurasi lebih buruk dari ini (meter)
 function acquireGPS(onUpdate) {
   if (!navigator.geolocation) { onUpdate({ error: 'Perangkat atau browser ini tidak mendukung GPS.' }); return () => {}; }
   let best = null, first = null, n = 0, jit = 0, done = false; const t0 = Date.now();
   const pack = () => best && { ...best, samples: n, jitter: Math.round(jit * 10) / 10 };
   const finish = () => { if (done) return; done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm); if (best) onUpdate({ fix: pack(), done: true }); };
-  const id = navigator.geolocation.watchPosition(p => {
+  let onPos;
+  const id = navigator.geolocation.watchPosition(onPos = p => {
     const c = { lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.max(1, Math.round(p.coords.accuracy)), at: new Date(p.timestamp).toISOString() };
     n++; if (!first) first = c; else jit = Math.max(jit, haversine(first, c));
     if (!best || c.acc <= best.acc) best = c;
-    if ((best.acc <= 20 && n >= 4) || Date.now() - t0 > 20000) finish(); else onUpdate({ fix: pack(), done: false });
+    const el = Date.now() - t0;
+    if ((best.acc <= 20 && n >= 4) || (el > 20000 && best.acc <= MAX_ACC) || el > 45000) finish(); else onUpdate({ fix: pack(), done: false });
   }, e => {
     if (best) return finish();
     done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm);
     onUpdate({ error: e.code === 1 ? 'Izin lokasi ditolak. Buka pengaturan Chrome atau aplikasi, izinkan Lokasi, lalu tekan Coba lagi.' : e.code === 3 ? 'Sinyal GPS belum didapat. Pindah ke area lebih terbuka atau dekat jendela, lalu tekan Coba lagi.' : 'Lokasi tidak dapat dibaca. Pastikan GPS (Lokasi) di HP aktif.' });
   }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
-  const tm = setTimeout(finish, 22000);
+  const tm = setTimeout(finish, 47000);
+  // jika mode perjalanan aktif, pakai posisi GPS terbaru yang sudah ada agar langsung terisi
+  if (typeof TRIP !== 'undefined' && TRIP.active && TRIP.raw && Date.now() - TRIP.raw.ts < 30000) setTimeout(() => { if (!done) onPos(TRIP.raw.p); }, 0);
   return () => { done = true; navigator.geolocation.clearWatch(id); clearTimeout(tm); };
 }
 
@@ -1102,11 +1130,15 @@ function renderGPS() {
   else if (!f) box.innerHTML = `<div class="gps"><span class="row"><span class="spin sm"></span><b>Mencari lokasi GPS…</b></span><span class="muted" style="font-size:13px">Pastikan GPS HP aktif. Jika muncul permintaan izin lokasi, pilih Izinkan.</span></div>`;
   else {
     let d = '';
-    if (c && hasLoc(c)) { const dist = haversine(f, c), r = c.radius || defRadius(); d = `<span class="row">Jarak ke ${esc(c.name)}: <b>${fmtDist(dist)}</b> ${dist <= r ? chip('Di lokasi', 'ok') : chip(`Di luar radius ${r} m`, 'bad')}</span>`; }
+    if (f.acc > MAX_ACC) d = '';
+    else if (c && hasLoc(c)) { const dist = haversine(f, c), r = c.radius || defRadius(); d = `<span class="row">Jarak ke ${esc(c.name)}: <b>${fmtDist(dist)}</b> ${dist <= r ? chip('Di lokasi', 'ok') : chip(`Di luar radius ${r} m`, 'bad')}</span>`; }
     else if (c) d = `<span class="muted" style="font-size:13px">Titik lokasi ${esc(c.name)} belum diatur manager. Posisi Anda tetap dicatat.</span>`;
     box.innerHTML = `<div class="gps"><span class="co">${f.lat.toFixed(6)}, ${f.lng.toFixed(6)}</span>
       <span class="row">Akurasi ±${f.acc} m ${f.acc <= 30 ? chip('Baik', 'ok') : f.acc <= 100 ? chip('Cukup', 'go') : chip('Rendah', 'bad')}</span>${d}
-      <span class="row" style="font-size:13px">${G.done ? '' : '<span class="spin sm"></span><span class="muted">Menyempurnakan akurasi…</span>'}<button type="button" class="linkbtn" data-act="regps">Perbarui lokasi</button></span></div>`;
+      <span class="row" style="font-size:13px">${G.done ? '' : '<span class="spin sm"></span><span class="muted">Menunggu sinyal GPS…</span>'}<button type="button" class="linkbtn" data-act="regps">Perbarui lokasi</button></span></div>
+      ${f.acc > MAX_ACC ? `<div class="gps bad" style="margin-top:8px"><b>Lokasi belum akurat (±${fmtDist(f.acc)})</b>
+        <span style="font-size:13px">Ini lokasi perkiraan, bukan GPS. Check-in baru bisa dilakukan jika akurasi di bawah ${MAX_ACC} m. Coba:</span>
+        <span style="font-size:13px">1. Pastikan check-in dari <b>HP</b>, bukan laptop.<br>2. Nyalakan <b>Lokasi/GPS</b> HP dan <b>Akurasi lokasi Google</b>.<br>3. Izin lokasi Chrome: pilih <b>Lokasi akurat (Precise)</b>, bukan Perkiraan.<br>4. Pindah ke dekat jendela atau luar ruangan, lalu tekan <b>Perbarui lokasi</b>.</span></div>` : ''}`;
   }
   updateMini();
 }
@@ -1214,6 +1246,7 @@ const FORMS = {
     if (!G) return;
     const fd = new FormData(f), now = new Date(), fx = G.fix;
     if (!fx) return toast('Lokasi GPS belum didapat. Tunggu sebentar atau tekan Perbarui lokasi.', 'bad');
+    if (fx.acc > MAX_ACC) return toast(`Lokasi belum akurat (±${fmtDist(fx.acc)}). Ikuti petunjuk di kotak merah, lalu tekan Perbarui lokasi.`, 'bad');
     const gpsMeta = { lat: fx.lat, lng: fx.lng, acc: fx.acc, gpsAt: fx.at, samples: fx.samples || 1, jitter: fx.jitter || 0 };
     if (G.mode === 'in') {
       const cid = fd.get('cust'); if (!cid) return toast('Pilih customer terlebih dulu.', 'bad');
@@ -1595,6 +1628,147 @@ function periodHTML(P) {
     <p class="rpt-foot">Laporan disusun otomatis dari sistem Kunjungan Lapangan. Waktu berdasarkan server, lokasi dari GPS perangkat petugas. Rincian kunjungan beserta foto dapat dilihat di menu Pemantauan.</p></div>`;
 }
 
+
+/* ---------- Mode perjalanan (rekam rute) & Timeline ---------- */
+const TRK = 'fv_tracks';
+const TRIP = { active: false, since: null, count: 0, dist: 0, last: null, buf: [], watch: null, wake: null, timer: null, date: null };
+const tripKey = () => 'fv-trip-' + S.me;
+const trackId = (date, u) => `${date}_${u}`;
+function tripCard() {
+  const on = TRIP.active;
+  return `<section class="trip ${on ? 'on' : ''}"><div class="trip-t"><b>${on ? '● Mode perjalanan aktif' : 'Mode perjalanan'}</b>
+    <span>${on ? `Sejak ${fmtTime(TRIP.since)}. ${TRIP.count} titik, ${fmtDist(TRIP.dist)}. Biarkan aplikasi tetap terbuka selama perjalanan.` : 'Rekam rute perjalanan hari ini. Rute hanya terekam selama aplikasi terbuka.'}</span></div>
+    <button class="btn ${on ? 'bad' : 'primary'}" data-act="${on ? 'tripStop' : 'tripStart'}">${on ? 'Selesai' : 'Mulai perjalanan'}</button></section>`;
+}
+async function wakeOn() { try { if ('wakeLock' in navigator && TRIP.active && document.visibilityState === 'visible') TRIP.wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
+async function tripStart(resume) {
+  if (TRIP.active || !navigator.geolocation) return;
+  const date = today(), ref = S.db.doc(`${TRK}/${trackId(date, S.me)}`);
+  try {
+    await saveSoon(ref.set({ date, username: S.me, staffName: me().name, active: true, updatedAt: new Date().toISOString(), ...(resume ? {} : { startedAt: new Date().toISOString() }) }, { merge: true }));
+  } catch (e) { return toast(errMsg(e), 'bad'); }
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(tripKey()) || 'null'); } catch (e) { return null; } })();
+  Object.assign(TRIP, { active: true, date, since: resume && saved ? saved.since : new Date().toISOString(), count: resume && saved ? saved.count || 0 : 0, dist: resume && saved ? saved.dist || 0 : 0, last: null, buf: [] });
+  try { localStorage.setItem(tripKey(), JSON.stringify({ date, since: TRIP.since, count: TRIP.count, dist: TRIP.dist })); } catch (e) {}
+  TRIP.watch = navigator.geolocation.watchPosition(tripPos, () => {}, { enableHighAccuracy: true, maximumAge: 10000, timeout: 60000 });
+  TRIP.timer = setInterval(tripFlush, 120000);
+  wakeOn();
+  if (!resume) toast('Mode perjalanan aktif. Biarkan aplikasi tetap terbuka.');
+  renderContent();
+}
+function tripPos(p) {
+  if (!TRIP.active) return;
+  TRIP.raw = { p: { coords: { latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy: p.coords.accuracy }, timestamp: p.timestamp }, ts: Date.now() };
+  const c = { t: new Date(p.timestamp).toISOString(), lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6), acc: Math.round(p.coords.accuracy) };
+  if (c.acc > 100) return;
+  const L = TRIP.last, moved = L ? haversine(L, c) : Infinity, dt = L ? (new Date(c.t) - new Date(L.t)) / 1000 : Infinity;
+  if (L && moved < 30 && dt < 120) return;
+  if (L && moved >= 30) TRIP.dist += moved;
+  TRIP.last = c; TRIP.buf.push(c); TRIP.count++;
+  try { localStorage.setItem(tripKey(), JSON.stringify({ date: TRIP.date, since: TRIP.since, count: TRIP.count, dist: TRIP.dist })); } catch (e) {}
+  if (TRIP.buf.length >= 5) tripFlush();
+  if (S.tab === 'kunjungan') renderContent();
+}
+async function tripFlush() {
+  if (!TRIP.buf.length) return;
+  const pts = TRIP.buf.splice(0);
+  try { await saveSoon(S.db.doc(`${TRK}/${trackId(TRIP.date, S.me)}`).update({ points: firebase.firestore.FieldValue.arrayUnion(...pts), updatedAt: new Date().toISOString() })); }
+  catch (e) { TRIP.buf.unshift(...pts); }
+}
+async function tripStop(silent) {
+  if (!TRIP.active) return;
+  await tripFlush();
+  TRIP.active = false;
+  if (TRIP.watch != null) navigator.geolocation.clearWatch(TRIP.watch); TRIP.watch = null;
+  clearInterval(TRIP.timer); try { TRIP.wake && TRIP.wake.release(); } catch (e) {} TRIP.wake = null;
+  try { localStorage.removeItem(tripKey()); } catch (e) {}
+  try { await saveSoon(S.db.doc(`${TRK}/${trackId(TRIP.date, S.me)}`).update({ active: false, endedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); } catch (e) {}
+  if (!silent) toast('Perjalanan selesai direkam.');
+  renderContent();
+}
+function tripResume() {
+  if (!S.me || isMgr() || TRIP.active) return;
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(tripKey()) || 'null'); } catch (e) {}
+  if (saved && saved.date === today()) tripStart(true); else { try { localStorage.removeItem(tripKey()); } catch (e) {} }
+}
+document.addEventListener('visibilitychange', () => { if (!TRIP.active) return; if (document.visibilityState === 'visible') wakeOn(); else tripFlush(); });
+ACT.tripStart = () => tripStart(false);
+ACT.tripStop = () => tripStop(false);
+const baseLogout = ACT.logout;
+ACT.logout = async (d, b) => { if (TRIP.active) await tripStop(true); baseLogout(d, b); };
+
+/* --- Timeline untuk manager --- */
+const TL = { key: null, unsub: null, data: null, map: null, layer: null, fit: true };
+function tlSub() {
+  const u = S.tlStaff || (staffList()[0] || {}).u; S.tlStaff = u;
+  const key = u ? trackId(S.date, u) : null;
+  if (key === TL.key) return; TL.key = key; TL.data = null; TL.fit = true;
+  if (TL.unsub) { TL.unsub(); TL.unsub = null; }
+  if (!key) return;
+  TL.unsub = S.db.doc(`${TRK}/${key}`).onSnapshot(sn => { TL.data = sn.exists ? sn.data() : { points: [] }; if (S.tab === 'timeline') { renderContent(); tlDraw(); } }, () => { TL.data = { points: [] }; renderContent(); });
+}
+function tlBuild() {
+  const pts = ((TL.data && TL.data.points) || []).slice().sort((a, b) => a.t.localeCompare(b.t));
+  const vis = S.visits.filter(v => v.username === S.tlStaff).slice().sort((a, b) => ptTime(a.in) - ptTime(b.in));
+  const seg = [], T = x => new Date(x).getTime();
+  const travel = (from, to) => {
+    const ps = pts.filter(p => T(p.t) >= from && T(p.t) <= to); let km = 0, gap = 0;
+    for (let i = 1; i < ps.length; i++) { km += haversine(ps[i - 1], ps[i]); const g = T(ps[i].t) - T(ps[i - 1].t); if (g > 10 * 60000) gap += g; }
+    if (to - from >= 60000 || ps.length) seg.push({ type: 'move', from, to, km, gap, n: ps.length });
+  };
+  const first = Math.min(pts.length ? T(pts[0].t) : Infinity, vis.length ? +ptTime(vis[0].in) : Infinity);
+  if (first === Infinity) return { seg, pts, vis, start: null, end: null };
+  let cur = first;
+  vis.forEach(v => {
+    const a = +ptTime(v.in), b = v.out ? +ptTime(v.out) : Date.now();
+    if (a > cur) travel(cur, a);
+    seg.push({ type: 'stop', from: a, to: b, v, open: !v.out }); cur = Math.max(cur, b);
+  });
+  const lastPt = pts.length ? T(pts[pts.length - 1].t) : cur;
+  if (lastPt > cur) travel(cur, lastPt);
+  return { seg, pts, vis, start: first, end: Math.max(cur, lastPt) };
+}
+function tlView() {
+  if (!staffList().length) return `<div class="empty"><h3>Belum ada petugas</h3></div>`;
+  if (!TL.data || !S.visLoaded) return loadingBlock();
+  const B = tlBuild(), moves = B.seg.filter(s => s.type === 'move'), stops = B.seg.filter(s => s.type === 'stop');
+  const km = moves.reduce((a, s) => a + s.km, 0), mv = moves.reduce((a, s) => a + (s.to - s.from), 0), st = stops.reduce((a, s) => a + (s.to - s.from), 0);
+  const gaps = moves.reduce((a, s) => a + s.gap, 0);
+  if (!B.start) return `<div class="empty"><h3>Belum ada data perjalanan</h3><p>${esc(nameOf(S.tlStaff))} belum merekam perjalanan atau check-in pada ${esc(fmtDate(S.date))}.</p></div>`;
+  const tm = x => fmtTime(new Date(x));
+  return `<div class="stats">
+      <div class="stat"><b>${fmtDist(km)}</b><span>Jarak tempuh terekam</span></div>
+      <div class="stat"><b>${fmtDur(mv)}</b><span>Waktu perjalanan</span></div>
+      <div class="stat ok"><b>${fmtDur(st)}</b><span>Waktu di lokasi customer</span></div>
+      <div class="stat"><b>${stops.length}</b><span>Kunjungan</span></div>
+      <div class="stat ${gaps ? 'bad' : ''}"><b>${gaps ? fmtDur(gaps) : '0'}</b><span>Rute tidak terekam</span></div></div>
+    <ol class="tl">
+      <li class="tl-dot start"><b>${tm(B.start)}</b> Mulai${TL.data.startedAt ? ' perjalanan' : ''}</li>
+      ${B.seg.map(s => s.type === 'move'
+        ? `<li class="tl-move"><b>${tm(s.from)}–${tm(s.to)}</b> Perjalanan, ${fmtDist(s.km)}, ${fmtDur(s.to - s.from)}${s.n ? '' : ' <span class="muted">(rute tidak terekam)</span>'}${s.gap ? ` <span class="chip bad">data terputus ${fmtDur(s.gap)}</span>` : ''}</li>`
+        : `<li class="tl-dot stop"><b>${tm(s.from)}–${s.open ? 'sekarang' : tm(s.to)}</b> ${esc(s.v.customerName)} <span class="muted">(${fmtDur(s.to - s.from)})</span> ${locChip(s.v.in)} <a href="#" data-act="goVisit" data-id="${esc(s.v.id)}">detail</a></li>`).join('')}
+      <li class="tl-dot end"><b>${tm(B.end)}</b> ${TL.data.active ? 'Posisi terakhir (masih merekam)' : 'Selesai'}</li>
+    </ol>
+    <p class="muted" style="font-size:13px">Rute hanya terekam selama aplikasi petugas terbuka. Bagian "data terputus" berarti aplikasi ditutup atau layar mati lebih dari 10 menit.</p>`;
+}
+function tlDraw() {
+  const el = $('#tlmap'); if (!el || S.tab !== 'timeline' || !window.L) return;
+  if (!TL.map || TL.map.getContainer() !== el) { TL.map = L.map(el).setView([-6.2, 106.82], 11); tiles().addTo(TL.map); TL.layer = L.layerGroup().addTo(TL.map); TL.fit = true; }
+  TL.map.invalidateSize();
+  TL.layer.clearLayers();
+  const B = tlBuild(), ll = B.pts.map(p => [p.lat, p.lng]), all = [...ll];
+  if (ll.length > 1) L.polyline(ll, { color: '#1D3F8F', weight: 5, opacity: .8 }).addTo(TL.layer);
+  if (ll.length) {
+    L.circleMarker(ll[0], { radius: 8, color: '#fff', weight: 3, fillColor: '#1E8A52', fillOpacity: 1 }).addTo(TL.layer).bindTooltip('Mulai ' + fmtTime(new Date(B.pts[0].t)));
+    L.circleMarker(ll[ll.length - 1], { radius: 8, color: '#fff', weight: 3, fillColor: '#C0392B', fillOpacity: 1 }).addTo(TL.layer).bindTooltip((TL.data && TL.data.active ? 'Posisi terakhir ' : 'Selesai ') + fmtTime(new Date(B.pts[B.pts.length - 1].t)));
+  }
+  B.vis.forEach((v, i) => { if (typeof v.in?.lat !== 'number') return; all.push([v.in.lat, v.in.lng]);
+    L.marker([v.in.lat, v.in.lng], { icon: pinIcon(v.in.inside === false ? 'bad' : 'ok', String(i + 1)) }).addTo(TL.layer).bindPopup(`<b>${i + 1}. ${esc(v.customerName)}</b><br>${fmtTime(ptTime(v.in))}–${v.out ? fmtTime(ptTime(v.out)) : 'sekarang'}`); });
+  if (TL.fit && all.length) { TL.map.fitBounds(all, { padding: [40, 40], maxZoom: 16 }); TL.fit = false; }
+  setTimeout(() => TL.map && TL.map.invalidateSize(), 60);
+}
+ACT.goVisit = d => { S.staffFilter = S.tlStaff; setTab('pantau'); setTimeout(() => ACT.goto({ id: d.id }), 400); };
+document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.change === 'tlstaff') { S.tlStaff = e.target.value; e.target.blur(); tlSub(); renderContent(); } });
 
 /* ---------- Arsip & backup bulanan ---------- */
 const ARCH = { name: 'kunjungan-lapangan', label: 'Kunjungan Lapangan', what: 'data kunjungan', main: 'fv_visits', photos: 'fv_photos', mark: true,
